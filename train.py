@@ -16,9 +16,6 @@ import torch.distributed as dist
 from src.settings import Args
 from src.model import build_model
 from src.dataset import MoonshotDataModule
-from src.memory_watchdog import start_memory_watchdog
-
-start_memory_watchdog()
 
 def init_logger(path):
     logger = logging.getLogger("lightning")
