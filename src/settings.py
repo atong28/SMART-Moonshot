@@ -11,13 +11,15 @@ class Args:
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0
     load_from_checkpoint: str | None = None
+    train: bool = True
+    test: bool = True
     
     input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']] = field(
         default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']
     )
     requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']] = field(default_factory=lambda: ['hsqc'])
     
-    debug: bool = True
+    debug: bool = False
     fp_type: Literal['Entropy', 'HYUN', 'Normal'] = 'Entropy'
     fp_radius: Optional[int] = 6
     batch_size: int = 32

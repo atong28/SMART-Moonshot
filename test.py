@@ -1,89 +1,25 @@
-import pathlib
-import yaml
-from datetime import datetime
+import os
+import pickle
 
-import logging, os, sys, torch
-import random, pickle
-import numpy as np
-import pytorch_lightning as pl
-import pytorch_lightning.callbacks as cb
-
+import wandb
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.model_summary import summarize
-from pytorch_lightning.callbacks.early_stopping import EarlyStopping
-import torch.distributed as dist
+import pytorch_lightning as pl
 
 from src.settings import Args
-from src.model import build_model
+from src.model import SPECTRE, OptionalInputSPECTRE
 from src.dataset import MoonshotDataModule
 
-def init_logger(path):
-    logger = logging.getLogger("lightning")
-    logger.setLevel(logging.DEBUG)
-    file_path = os.path.join(path, "logs.txt")
-    with open(file_path, 'w') as fp: # touch
-        pass
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-    fh = logging.FileHandler(file_path)
-    fh.setFormatter(formatter)
-    logger.addHandler(fh)
-    logger.addHandler(logging.StreamHandler(sys.stdout))
-    return logger
 
-def seed_everything(seed):
-    """
-    Set the random seed for reproducibility.
-    """
-    pl.seed_everything(seed,  workers=True)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed) 
-    np.random.seed(seed)
-    random.seed(seed)
-    # torch.use_deterministic_algorithms(True)
-
-def train(args: Args):
-    args = Args()
-    optional_inputs = set(args.requires) != set(args.input_types)
-    seed_everything(seed=args.seed)
-    torch.set_float32_matmul_precision('medium')
-    
-    if args.debug:
-        args.epochs = 1
-    
-    now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    results_path = os.path.join(args.data_root, 'results', args.experiment_name, now)
-    while os.path.exists(results_path):
-        results_path += '_copy'
-    os.makedirs(results_path)
-    my_logger = init_logger(results_path)
-    my_logger.info(f'[Main] Results Path: {results_path}')
-    try:
-        my_logger.info(f'[Main] Using GPU : {torch.cuda.get_device_name()}')
-    except:
-        my_logger.info(f'[Main] Using GPU: unknown type')
-
-    # Trainer, callbacks
-    wandb_logger = WandbLogger(name=args.experiment_name, project="SPECTRE")
-    metric = 'val/mean_cos'
-    ckpt_callback = cb.ModelCheckpoint(monitor=metric, mode='max', save_last=False, save_top_k = 1)
-    early_stopping = EarlyStopping(monitor=metric, mode='max', patience=args.patience)
-    lr_monitor = cb.LearningRateMonitor(logging_interval="step")
+def test(args: Args, data_module: MoonshotDataModule, results_path: str, model: SPECTRE | OptionalInputSPECTRE | None = None, ckpt_path: str | None = None, wandb_run = None):
+    wandb_logger = WandbLogger(experiment=wandb_run)
     trainer = pl.Trainer(
-        max_epochs=args.epochs,
         accelerator="auto",
-        logger=wandb_logger, 
-        callbacks=[early_stopping, lr_monitor, ckpt_callback],
-        accumulate_grad_batches=args.accumulate_grad_batches_num,
+        devices=1,           # force single-GPU
+        strategy='auto',
+        logger=wandb_logger,
+        accumulate_grad_batches=args.accumulate_grad_batches_num
     )
-    
-    model = build_model(args)
-    
-    if trainer.global_rank == 0:
-        my_logger.info(f"[Main] Model Summary: {summarize(model)}")
-    data_module = MoonshotDataModule(args)
-    
-    my_logger.info("[Main] Begin Training!")
-    trainer.fit(model, data_module, ckpt_path = args["checkpoint_path"])
-
-    # Ensure all processes synchronize before switching to test mode
-    trainer.strategy.barrier()
+    model.setup_ranker()
+    test_result = trainer.test(model, data_module, ckpt_path=ckpt_path)
+    with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
+        pickle.dump(test_result, f)

@@ -13,17 +13,33 @@ import torch.distributed as dist
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
-import zipfile
 
 from .settings import Args
-from .fp_loaders import get_fp_loader
+from .fp_loaders.entropy import EntropyFPLoader
 
-logger = logging.getLogger("lightning")
-if dist.is_initialized():
-    rank = dist.get_rank()
-    if rank != 0:
+
+def is_main_process():
+    return int(os.environ.get("RANK", 0)) == 0
+
+def init_logger(path):
+    logger = logging.getLogger("lightning")
+    if is_main_process():
+        logger.setLevel(logging.INFO)
+    else:
         logger.setLevel(logging.WARNING)
-logger.info('Data logger is set up!')
+    if not logger.handlers:
+        file_path = os.path.join(path, "logs.txt")
+        os.makedirs(os.path.dirname(file_path), exist_ok=True)
+
+        with open(file_path, 'w') as fp:
+            pass
+
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        fh = logging.FileHandler(file_path)
+        fh.setFormatter(formatter)
+        logger.addHandler(fh)
+        logger.addHandler(logging.StreamHandler(sys.stdout))
+    return logger
 
 DEBUG_LEN = 3000
 
@@ -78,12 +94,13 @@ def normalize_hsqc(hsqc):
     return hsqc
 
 class MoonshotDataset(Dataset):
-    def __init__(self, args: Args, split: str = 'train', overrides: dict | None = None):
+    def __init__(self, args: Args, results_path: str, fp_loader: EntropyFPLoader, split: str = 'train', overrides: dict | None = None,):
         '''
         Assertions:
         c_nmr and h_nmr are either both present in input_types or both not present.
         '''
         try:
+            logger = init_logger(results_path)
             if overrides is not None:
                 args = Args(**{**vars(args), **overrides})
             logger.info(f'[MoonshotDataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
@@ -98,18 +115,21 @@ class MoonshotDataset(Dataset):
             self.cache_path = os.path.join(self.root, f'index_{split}_{self.input_types_encoded}_{self.requires_types_encoded}.pkl')
             if args.use_cached_datasets and os.path.exists(self.cache_path):
                 logger.info(f'[MoonshotDataset] Loading filepaths from cache {self.cache_path}')
-                data = pickle.load(open(self.cache_path, 'rb'))
+                with open(self.cache_path, 'rb') as f:
+                    data = pickle.load(f)
             else:
-                data = pickle.load(open(os.path.join(self.root, 'index.pkl'), 'rb'))
+                with open(os.path.join(self.root, 'index.pkl'), 'rb') as f:
+                    data = pickle.load(f)
                 data = {idx: entry for idx, entry in data.items() if entry['split'] == self.split}
                 data_len = len(data)
                 logger.info(f'[MoonshotDataset] Requiring the following items to be present: {self.requires}')
                 data = {idx: entry for idx, entry in data.items() if all(entry[f'has_{dtype}'] for dtype in self.requires)}
                 logger.info(f'[MoonshotDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
             
-            if not os.path.exists(self.cache_path):
-                logger.info('[MoonshotDataset] Caching processed dataset to workspace')
-                pickle.dump(data, open(self.cache_path, 'wb'))
+            # if not os.path.exists(self.cache_path) and not args.use_cached_datasets:
+            #     logger.info('[MoonshotDataset] Caching processed dataset to workspace')
+            #     with open(self.cache_path, 'wb') as f:
+            #         pickle.dump(data, f)
             
             if self.debug and len(data) > DEBUG_LEN:
                 logger.info(f'[MoonshotDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
@@ -119,7 +139,7 @@ class MoonshotDataset(Dataset):
                 raise RuntimeError(f'[MoonshotDataset] Dataset split {split} is empty!')
             self.jittering = args.jittering
             self.use_peak_values = args.use_peak_values
-            self.fp_loader = get_fp_loader(args)
+            self.fp_loader = fp_loader
             logger.info('[MoonshotDataset] Setup complete!')
 
         except Exception:
@@ -154,6 +174,14 @@ class MoonshotDataset(Dataset):
             if self.jittering > 0 and self.split == 'train':
                 h_nmr = h_nmr + torch.randn_like(h_nmr) * self.jittering * 0.1
             data_inputs['h_nmr'] = h_nmr
+        
+        if ('c_nmr' in self.input_types and 'c_nmr' not in self.requires and 
+            'h_nmr' in self.input_types and 'h_nmr' not in self.requires):
+            random_num = random.random()
+            if random_num <= 0.3984:
+                c_nmr = torch.tensor([]) 
+            elif random_num <= 0.3984 + 0.2032:
+                h_nmr = torch.tensor([])
 
         if 'mass_spec' in self.input_types and data_obj['has_mass_spec']:
             if 'mass_spec' in self.requires or ('mass_spec' not in self.requires and random.random() >= DROP_MS_PERCENTAGE):
@@ -168,8 +196,6 @@ class MoonshotDataset(Dataset):
         if 'mw' in self.input_types and data_obj['has_mw']:
             if 'mw' in self.requires or ('mw' not in self.requires and random.random() >= DROP_MW_PERCENTAGE):
                 data_inputs['mw'] = torch.tensor([data_obj['mw'], 0, 0]).float() 
-        
-        # TODO: implement data dropping for 1D NMRs
         
         inputs, type_indicator = self._pad_and_stack_input(**data_inputs)
         
@@ -225,7 +251,7 @@ class MoonshotDataset(Dataset):
         inputs = torch.vstack(inputs)               
         type_indicator = torch.tensor(type_indicator).long()
         return inputs, type_indicator
-    
+
 def collate(batch):
     items = tuple(zip(*batch))
     inputs = pad_sequence([v for v in items[0]], batch_first=True) 
@@ -240,7 +266,7 @@ def collate(batch):
     raise NotImplementedError("Not implemented")
 
 class MoonshotDataModule(pl.LightningDataModule):
-    def __init__(self, args: Args):
+    def __init__(self, args: Args, results_path: str, fp_loader: EntropyFPLoader):
         super().__init__()
         if len(args.requires) == 0 or (len(args.requires) == 1 and args.requires[0] == 'mw'):
             raise ValueError('You must require at least one datatype, and it cannot be molecular weight!')
@@ -251,6 +277,8 @@ class MoonshotDataModule(pl.LightningDataModule):
         self.persistent_workers = self.args.persistent_workers
         self.combinations_list, self.combinations_names = self._get_combinations()
         self.validate_all = args.validate_all
+        self.results_path = results_path
+        self.fp_loader = fp_loader
     
     def _get_combinations(self):
         required = set(self.args.requires)
@@ -272,28 +300,32 @@ class MoonshotDataModule(pl.LightningDataModule):
     
     def setup(self, stage):
         if stage == "fit" or stage == "validate" or stage is None:
-            self.train = MoonshotDataset(self.args, split='train')
+            self.train = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='train')
             if self.args.validate_all:
                 self.val = [
                     MoonshotDataset(
                         self.args,
+                        self.results_path,
+                        self.fp_loader,
                         split='val',
                         overrides={'requires': combo, 'input_types': combo}
                     ) for combo in self.combinations_list
                 ]
             else:
-                self.val = MoonshotDataset(self.args, split='val')
+                self.val = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='val')
         if stage == "test":
             if self.args.validate_all:
                 self.test = [
                     MoonshotDataset(
                         self.args,
+                        self.results_path,
+                        self.fp_loader,
                         split='test',
                         overrides={'requires': combo, 'input_types': combo}
                     ) for combo in self.combinations_list
                 ]
             else:
-                self.test = MoonshotDataset(self.args, split='test')
+                self.test = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='test')
         if stage == "predict":
             raise NotImplementedError("Predict setup not implemented")
     

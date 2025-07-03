@@ -2,6 +2,7 @@ import pickle
 import numpy as np
 import torch
 import os
+import time
 
 from ..settings import Args
 from .fp_utils import compute_entropy, count_circular_substructures
@@ -27,6 +28,8 @@ class EntropyFPLoader:
         return out
         
     def setup(self, out_dim, max_radius):
+        print('Setting up EntropyFPLoader...')
+        start = time.time()
         if self.out_dim == out_dim and self.max_radius == max_radius:
             print("EntropyFPLoader is already setup")
             return
@@ -45,12 +48,11 @@ class EntropyFPLoader:
         # retrieval_set_size = len(retrieval_set)
         retrieval_set_size = 526316
         entropy_each_frag = compute_entropy(counts, total_dataset_size = retrieval_set_size)
-
         indices_of_high_entropy = np.argsort(entropy_each_frag, kind="stable")[:out_dim]
         self.bitInfos_to_fp_index_map = {bitinfos[bitinfo_list_index]: fp_index for fp_index, bitinfo_list_index in enumerate(indices_of_high_entropy)}
         self.fp_index_to_bitInfo_mapping =  {v:k for k, v in self.bitInfos_to_fp_index_map.items()}
-        print(f"EntropyFPLoader is setup | {out_dim=}, {max_radius=}")
-    
+        end = time.time()
+        print(f'Done! Took {end-start} seconds')
     def build_mfp(self, idx):
         filepath = os.path.join(self.data_root, 'Fragments', f'{idx}.pt')
         fragment_infos = torch.load(filepath, weights_only=True) 
@@ -82,10 +84,10 @@ class EntropyFPLoader:
     
     def build_inference_ranking_set_with_everything(self, fp_dim, max_radius, use_hyun_fp = False, test_on_deepsat_retrieval_set = False):
         if use_hyun_fp:
-            rankingset_path = f"{self.args.inference_root}/inference_data/inference_rankingset_with_stable_sort/hyun_fp_stacked_together_sparse/FP_normalized.pt"
+            rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/hyun_fp_stacked_together_sparse/FP_normalized.pt"
         else:
-            rankingset_path = f"{self.args.inference_root}/inference_data/inference_rankingset_with_stable_sort/non_collision_FP_rankingset_max_radius_{max_radius}_dim_{fp_dim}_stacked_together/FP.pt"
+            rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/non_collision_FP_rankingset_max_radius_{max_radius}_dim_{fp_dim}_stacked_together/FP.pt"
         if test_on_deepsat_retrieval_set:
             rankingset_path = rankingset_path.replace("FP_normalized", "FP_normalized_deepsat_retrieval_set")
-        print(f"loading {rankingset_path}")
-        return torch.load(rankingset_path)
+        print(f"Loading {rankingset_path}")
+        return torch.load(rankingset_path, weights_only=True)

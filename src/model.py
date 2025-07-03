@@ -8,7 +8,7 @@ import numpy as np
 
 from .settings import Args
 from .utils import L1
-from .fp_loaders import get_fp_loader
+from .fp_loaders.entropy import EntropyFPLoader
 from .encoder import build_encoder
 from .metrics import cm
 from .ranker import RankingSet
@@ -22,10 +22,10 @@ if dist.is_initialized():
 logger_should_sync_dist = torch.cuda.device_count() > 1
 
 class SPECTRE(pl.LightningModule):
-    def __init__(self, args: Args):
+    def __init__(self, args: Args, fp_loader: EntropyFPLoader):
         super().__init__()
         
-        self.fp_loader = get_fp_loader(args)
+        self.fp_loader = fp_loader
         
         if self.global_rank == 0:
             logger.info("[SPECTRE] Started Initializing")
@@ -80,8 +80,6 @@ class SPECTRE(pl.LightningModule):
         self.validation_step_outputs = []
         self.training_step_outputs = []
         self.test_step_outputs = []
-        
-        self.test_np_classes_rank1 = defaultdict(list)
 
         self.embedding = nn.Embedding(6, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
@@ -119,13 +117,16 @@ class SPECTRE(pl.LightningModule):
             The memory mask specifying which elements were padding in X.
         """
         if mask is None:
-            zeros = ~hsqc.sum(dim=2).bool()
+            '''zeros = ~hsqc.sum(dim=2).bool()
             mask = [
                 torch.tensor([[False]] * hsqc.shape[0]).type_as(zeros),
                 zeros,
             ]
             mask = torch.cat(mask, dim=1)
-            mask = mask.to(self.device)
+            mask = mask.to(self.device)'''
+            zeros = ~hsqc.sum(dim=2).bool()
+            prefix_mask = torch.zeros((hsqc.size(0), 1), dtype=torch.bool, device=hsqc.device)
+            mask = torch.cat([prefix_mask, zeros], dim=1).to(dtype=torch.bool)
 
         points = self.enc(hsqc)
         type_embedding = self.embedding(type_indicator)
@@ -178,7 +179,7 @@ class SPECTRE(pl.LightningModule):
         return metrics
     
     def test_step(self, batch, batch_idx):
-        inputs, labels, NMR_type_indicator, np_classes = batch
+        inputs, labels, NMR_type_indicator = batch
         out = self.forward(inputs, NMR_type_indicator)
         loss = self.loss(out, labels)
         metrics, rank_1_hits = self.compute_metric_func(
@@ -190,10 +191,8 @@ class SPECTRE(pl.LightningModule):
         
         if type(self.test_step_outputs)==list:
             self.test_step_outputs.append(metrics)
-            for curr_classes, curr_rank_1_hits in zip(np_classes, rank_1_hits.tolist()):
-                for np_class in curr_classes:
-                    self.test_np_classes_rank1[np_class].append(curr_rank_1_hits)
-        return metrics, np_classes, rank_1_hits
+        return metrics, rank_1_hits
+    
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         x, smiles_chemical_name = batch
@@ -234,9 +233,6 @@ class SPECTRE(pl.LightningModule):
         for k, v in di.items():
             self.log(k, v, on_epoch=True)
             # self.log(k, v, on_epoch=True)
-            
-        for np_class, rank1_hits in self.test_np_classes_rank1.items():
-            self.log(f"test/rank_1_of_NP_class/{np_class}", np.mean(rank1_hits), on_epoch=True)
         self.test_step_outputs.clear()
 
     def configure_optimizers(self):
@@ -274,8 +270,8 @@ class SPECTRE(pl.LightningModule):
         )
 
 class OptionalInputSPECTRE(SPECTRE):
-    def __init__(self, args: Args, combinations_names: list[str]):
-        super().__init__(args)
+    def __init__(self, args: Args, fp_loader: EntropyFPLoader, combinations_names: list[str]):
+        super().__init__(args, fp_loader)
         self.validation_step_outputs = defaultdict(list)
         self.test_step_outputs = defaultdict(list)
         self.test_np_classes_rank1 = defaultdict(lambda : defaultdict(list))
@@ -297,12 +293,9 @@ class OptionalInputSPECTRE(SPECTRE):
             current_batch_name = 'ALL'
         else:
             current_batch_name = self.all_dataset_names[dataloader_idx]
-        metrics, np_classes, rank_1_hits = super().test_step(batch, batch_idx)
+        metrics, rank_1_hits = super().test_step(batch, batch_idx)
         self.test_step_outputs[current_batch_name].append(metrics)
-        
-        for curr_classes, curr_rank_1_hits in zip(np_classes, rank_1_hits.tolist()):
-            for np_class in curr_classes:
-                self.test_np_classes_rank1[current_batch_name][np_class].append(curr_rank_1_hits)
+
         return metrics
     
     def predict_step(self, batch, batch_idx, dataloader_idx, return_representations=False):
@@ -330,7 +323,7 @@ class OptionalInputSPECTRE(SPECTRE):
     def on_test_epoch_end(self):
         total_features = defaultdict(list)
         for dataset_name in self.all_dataset_names:
-            if len(self.validation_step_outputs[dataset_name]) == 0:
+            if len(self.test_step_outputs[dataset_name]) == 0:
                 continue
             feats = self.test_step_outputs[dataset_name][0].keys()
             di = {}
@@ -340,14 +333,11 @@ class OptionalInputSPECTRE(SPECTRE):
                 total_features[feat].append(curr_dataset_curr_feature)
             for k, v in di.items():
                 self.log(k, v, on_epoch=True, prog_bar="rank_1" in k)
-            
-            for np_class, rank1_hits in self.test_np_classes_rank1[dataset_name].items():
-                self.log(f"test/rank_1_of_NP_class/{np_class}/{dataset_name}", np.mean(rank1_hits), on_epoch=True)
         self.test_step_outputs.clear()
 
-def build_model(args: Args, optional_inputs: bool, combinations_names = None):
+def build_model(args: Args, optional_inputs: bool, fp_loader: EntropyFPLoader, combinations_names = None):
     if optional_inputs:
         print('[SPECTRE] Using optional input ranked transformer')
-        return OptionalInputSPECTRE(args, combinations_names)
+        return OptionalInputSPECTRE(args, fp_loader, combinations_names)
     print('[SPECTRE] Using fixed input ranked transformer')
-    return SPECTRE(args)
+    return SPECTRE(args, fp_loader)
