@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 import sys
+import json
 import shutil
 from datetime import datetime
 import json
@@ -98,6 +99,17 @@ def parse_args() -> Args:
     parser.add_argument('--warm_up_steps', type=int)
 
     args = parser.parse_args()
+    if args.load_from_checkpoint:
+        checkpoint_dir = os.path.dirname(args.load_from_checkpoint)
+        params_path = os.path.join(checkpoint_dir, 'params.json')
+        if not os.path.exists(params_path):
+            raise FileNotFoundError(f"No params.json found in checkpoint directory: {params_path}")
+        
+        with open(params_path, 'r') as f:
+            checkpoint_args_dict = json.load(f)
+
+        for k, v in checkpoint_args_dict.items():
+            setattr(args, k, v)
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
 
     return Args(**args_dict)
@@ -113,11 +125,11 @@ if __name__ == "__main__":
     while os.path.exists(results_path):
         results_path += '_copy'
     os.makedirs(results_path, exist_ok=True)
-    logger = init_logger(results_path)
-    
-    
+    logger = init_logger(results_path)    
     logger.info('[Main] Parsed args:')
     logger.info(args)
+    with open(os.path.join(results_path, 'params.json'), 'w') as f:
+        json.dump(args.__dict__, f)
     fp_loader = get_fp_loader(args)
     data_module = MoonshotDataModule(args, results_path, fp_loader)
     optional_inputs = set(args.requires) != set(args.input_types)
