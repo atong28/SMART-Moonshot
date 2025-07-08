@@ -18,9 +18,9 @@ def zip_directory_contents(directory: str, output_zip: str):
                 relative_path = os.path.relpath(full_path, directory)  # relative to directory contents
                 zipf.write(full_path, arcname=relative_path)
 
-ORIGIN_PATH = '/root/gurusmart/MassSpecBasic.zip'
+ORIGIN_PATH = '/root/gurusmart/entropy_of_hashes_DB_updated.zip'
 CHECKPOINT_PATH = '/root/gurusmart/RefactorCheckpoint.zip'
-OLD_DATA_ROOT = '/workspace'
+OLD_DATA_ROOT = '/workspace/OldDataset'
 NEW_DATA_ROOT = '/workspace/CombinedDataset'
 
 TRAIN_SPLIT_FRAC = 0.8
@@ -91,7 +91,7 @@ try:
                 'smiles': None,
                 'hyun_fp': None,
                 'name': None,
-                'split': 'train'
+                'split': ALL_SPLITS[split_idx][1]
             }
             if hsqc_files is not None and filename in hsqc_files:
                 molecule_data['has_hsqc'] = True
@@ -141,12 +141,12 @@ try:
                 print(f'Name not found for idx {idx}')
             else:
                 molecule_data['name'] = name_data[idx]
-            split_float = random.random()
-            if split_float > TRAIN_SPLIT_FRAC:
-                if split_float > TRAIN_SPLIT_FRAC + VAL_SPLIT_FRAC:
-                    molecule_data['split'] = 'test'
-                else:
-                    molecule_data['split'] = 'val'
+            #split_float = random.random()
+            #if split_float > TRAIN_SPLIT_FRAC:
+            #    if split_float > TRAIN_SPLIT_FRAC + VAL_SPLIT_FRAC:
+            #        molecule_data['split'] = 'test'
+            #    else:
+            #        molecule_data['split'] = 'val'
             all_data.append(molecule_data)
             molecule_idx += 1
             

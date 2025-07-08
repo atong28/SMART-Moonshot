@@ -8,12 +8,12 @@ import os
 import torch
 from tqdm import tqdm
 
-DATA_ROOT = '/workspace'
+DATA_ROOT = '/workspace/CombinedDataset'
 
 def smiles_to_formula(smiles: str) -> str:
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
-        raise ValueError(f"Invalid SMILES: {smiles}")
+        return None
     formula = rdMolDescriptors.CalcMolFormula(mol)
     
     return parse_charge(formula)[0]
@@ -59,6 +59,8 @@ if __name__ == '__main__':
             continue
         smiles = entry['smiles']
         formula = smiles_to_formula(smiles)
+        if formula is None:
+            continue
         distribution = get_isotopic_distribution(formula, threshold=0.99)
         
         for mass, prob in distribution:

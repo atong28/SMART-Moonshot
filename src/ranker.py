@@ -16,7 +16,7 @@ class RankingSet(torch.nn.Module):
         debug=False,
         batch_size=0,
         CE_num_class=None,
-        use_actaul_mw_for_retrival=None,
+        use_actual_mw_for_retrieval=None,
         need_to_normalize=True,
     ):
         """
@@ -50,7 +50,7 @@ class RankingSet(torch.nn.Module):
 
         with torch.no_grad():
 
-            if use_actaul_mw_for_retrival is not None:
+            if use_actual_mw_for_retrieval is not None:
                 import pickle
                 with open(f'/root/gurusmart/MorganFP_prediction/inference_data/coconut_loutus_hyun_training/inference_metadata_latest_RDkit.pkl', 'rb') as file:
                     smiles_infos = pickle.load(file)
@@ -147,12 +147,12 @@ class RankingSet(torch.nn.Module):
         thresh,
         query_idx_in_rankingset,
         mw,
-        use_actaul_mw_for_retrival,
+        use_actual_mw_for_retrieval,
     ):
         assert queries.size() == truths.size()
         if mw is not None:
             # filtering some mols in rankingset
-            if use_actaul_mw_for_retrival:
+            if use_actual_mw_for_retrieval:
                 idx_to_keep = torch.abs(mw[0] - self.MWs) < 20
             else:
                 idx_to_keep = torch.abs(self.MWs - mw[0]) / self.MWs < 0.2
@@ -190,7 +190,7 @@ class RankingSet(torch.nn.Module):
         thresh,
         query_idx_in_rankingset,
         mw,
-        use_actaul_mw_for_retrival,
+        use_actual_mw_for_retrieval,
     ):
         """
         Perform a dot-product ranking. Assumes that data, queries, and truths are already
@@ -210,7 +210,7 @@ class RankingSet(torch.nn.Module):
         assert queries.size() == truths.size()
         if mw is not None:
             # filtering some mols in rankingset
-            if use_actaul_mw_for_retrival: # user has provided the actual mw
+            if use_actual_mw_for_retrieval: # user has provided the actual mw
                 idx_to_keep = torch.abs(mw[0] - self.MWs) < 20
             else:                           # 
                 idx_to_keep = torch.abs(self.MWs - mw[0]) / self.MWs < 0.2
@@ -271,7 +271,7 @@ class RankingSet(torch.nn.Module):
         truths,
         query_idx_in_rankingset,
         mw,
-        use_actaul_mw_for_retrival,
+        use_actual_mw_for_retrieval,
         use_jaccard,
     ):
         """
@@ -297,7 +297,7 @@ class RankingSet(torch.nn.Module):
                     thresh,
                     query_idx_in_rankingset,
                     mw,
-                    use_actaul_mw_for_retrival,
+                    use_actual_mw_for_retrieval,
                 )
             else:
                 #   q = queries.size()[0]
@@ -315,7 +315,7 @@ class RankingSet(torch.nn.Module):
                     thresh,
                     query_idx_in_rankingset,
                     mw,
-                    use_actaul_mw_for_retrival,
+                    use_actual_mw_for_retrieval,
                 )
 
     def batched_rank_tfidf(self, queries, truths):

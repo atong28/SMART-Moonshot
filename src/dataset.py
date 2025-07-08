@@ -112,24 +112,14 @@ class MoonshotDataset(Dataset):
             self.debug = args.debug
             self.input_types_encoded = sum(2 ** i for i, input_type in enumerate(INPUTS_CANONICAL_ORDER) if input_type in self.input_types)
             self.requires_types_encoded = sum(2 ** i for i, input_type in enumerate(INPUTS_CANONICAL_ORDER) if input_type in self.requires)
-            self.cache_path = os.path.join(self.root, f'index_{split}_{self.input_types_encoded}_{self.requires_types_encoded}.pkl')
-            if args.use_cached_datasets and os.path.exists(self.cache_path):
-                logger.info(f'[MoonshotDataset] Loading filepaths from cache {self.cache_path}')
-                with open(self.cache_path, 'rb') as f:
-                    data = pickle.load(f)
-            else:
-                with open(os.path.join(self.root, 'index.pkl'), 'rb') as f:
-                    data = pickle.load(f)
-                data = {idx: entry for idx, entry in data.items() if entry['split'] == self.split}
-                data_len = len(data)
-                logger.info(f'[MoonshotDataset] Requiring the following items to be present: {self.requires}')
-                data = {idx: entry for idx, entry in data.items() if all(entry[f'has_{dtype}'] for dtype in self.requires)}
-                logger.info(f'[MoonshotDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
-            
-            # if not os.path.exists(self.cache_path) and not args.use_cached_datasets:
-            #     logger.info('[MoonshotDataset] Caching processed dataset to workspace')
-            #     with open(self.cache_path, 'wb') as f:
-            #         pickle.dump(data, f)
+
+            with open(os.path.join(self.root, 'index.pkl'), 'rb') as f:
+                data = pickle.load(f)
+            data = {idx: entry for idx, entry in data.items() if entry['split'] == self.split}
+            data_len = len(data)
+            logger.info(f'[MoonshotDataset] Requiring the following items to be present: {self.requires}')
+            data = {idx: entry for idx, entry in data.items() if all(entry[f'has_{dtype}'] for dtype in self.requires)}
+            logger.info(f'[MoonshotDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
             
             if self.debug and len(data) > DEBUG_LEN:
                 logger.info(f'[MoonshotDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
@@ -247,8 +237,8 @@ class MoonshotDataset(Dataset):
             mass_spec = F.pad(mass_spec, (0, 1), "constant", 0)
             inputs.append(mass_spec)
             type_indicator += [MS_TYPE] * len(mass_spec)
-            
-        inputs = torch.vstack(inputs)               
+        
+        inputs = torch.vstack(inputs)
         type_indicator = torch.tensor(type_indicator).long()
         return inputs, type_indicator
 
@@ -312,7 +302,7 @@ class MoonshotDataModule(pl.LightningDataModule):
                     ) for combo in self.combinations_list
                 ]
             else:
-                self.val = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='val')
+                self.val = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='val', overrides={'requires': self.args.input_types})
         if stage == "test":
             if self.args.validate_all:
                 self.test = [
@@ -325,7 +315,7 @@ class MoonshotDataModule(pl.LightningDataModule):
                     ) for combo in self.combinations_list
                 ]
             else:
-                self.test = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='test')
+                self.test = MoonshotDataset(self.args, self.results_path, self.fp_loader, split='test', overrides={'requires': self.args.input_types})
         if stage == "predict":
             raise NotImplementedError("Predict setup not implemented")
     

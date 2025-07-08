@@ -24,11 +24,11 @@ class Args:
     fp_radius: Optional[int] = 6
     batch_size: int = 32
     num_workers: int = 8
-    epochs: int = 300
-    patience: int = 7
+    epochs: int = 1000
+    patience: int = 20
     persistent_workers: bool = True
     validate_all: bool = False
-    use_cached_datasets: bool = True
+    use_cached_datasets: bool = False
     
     jittering: float = 0.0
     use_peak_values: bool = False
@@ -58,6 +58,5 @@ class Args:
     use_jaccard: bool = False
 
     # testing args
-    test_on_deepsat_retrieval_set: bool = False
     rank_by_soft_output: bool = True
     rank_by_test_set: bool = False

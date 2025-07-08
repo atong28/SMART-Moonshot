@@ -66,7 +66,6 @@ def parse_args() -> Args:
     add_bool_flag(parser, 'save_params', True)
     add_bool_flag(parser, 'freeze_weights', False)
     add_bool_flag(parser, 'use_jaccard', False)
-    add_bool_flag(parser, 'test_on_deepsat_retrieval_set', False)
     add_bool_flag(parser, 'rank_by_soft_output', True)
     add_bool_flag(parser, 'rank_by_test_set', False)
     add_bool_flag(parser, 'train', True)
@@ -115,15 +114,7 @@ if __name__ == "__main__":
         results_path += '_copy'
     os.makedirs(results_path, exist_ok=True)
     logger = init_logger(results_path)
-    if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-        wandb_run = wandb.init(
-            project='SPECTRE',
-            name=experiment_name,           # Optional: human-readable name
-            config=args,               # Your Args class or dict
-            resume="allow",            # Resume if interrupted
-        )
-    else:
-        wandb_run = None
+    
     
     logger.info('[Main] Parsed args:')
     logger.info(args)
@@ -132,9 +123,19 @@ if __name__ == "__main__":
     optional_inputs = set(args.requires) != set(args.input_types)
     model = build_model(args, optional_inputs, fp_loader, combinations_names=data_module.combinations_names)
     if args.train:
+        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+            wandb_run = wandb.init(
+                project='SPECTRE',
+                name=experiment_name,
+                config=args.__dict__,
+                resume="allow",
+            )
+        else:
+            wandb_run = None
         train(args, data_module, model, results_path, wandb_run=wandb_run)
     elif args.test:
-        test(args, data_module, results_path, None, args.load_from_checkpoint, wandb_run=wandb_run)
+        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
+            test(args, data_module, results_path, model, ckpt_path=args.load_from_checkpoint, wandb_run=None)
     else:
         raise ValueError('Both train and test are disabled, nothing to do!')
     

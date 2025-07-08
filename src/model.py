@@ -25,13 +25,13 @@ class SPECTRE(pl.LightningModule):
     def __init__(self, args: Args, fp_loader: EntropyFPLoader):
         super().__init__()
         
+        self.args = args
         self.fp_loader = fp_loader
         
         if self.global_rank == 0:
             logger.info("[SPECTRE] Started Initializing")
 
         self.fp_length = args.out_dim
-        self.test_on_deepsat_retrieval_set = args.test_on_deepsat_retrieval_set
         self.out_dim = args.out_dim
         
         self.batch_size = args.batch_size
@@ -174,6 +174,7 @@ class SPECTRE(pl.LightningModule):
             use_Jaccard = self.use_jaccard,
             no_ranking = True
             )
+        
         if type(self.validation_step_outputs) == list: # adapt for child class: optional_input_ranked_transformer
             self.validation_step_outputs.append(metrics)
         return metrics
@@ -182,16 +183,24 @@ class SPECTRE(pl.LightningModule):
         inputs, labels, NMR_type_indicator = batch
         out = self.forward(inputs, NMR_type_indicator)
         loss = self.loss(out, labels)
-        metrics, rank_1_hits = self.compute_metric_func(
+        
+        mw_list = None
+        if 'mw' in self.args.input_types:
+            mw_list = []
+            for x, t in zip(inputs, NMR_type_indicator):
+                mw_values = x[t == 3]  # MW_TYPE = 3
+                mw_list.append(mw_values[0, 0].item() if len(mw_values) > 0 else None)
+        
+        metrics, rank_res = self.compute_metric_func(
             out, labels, self.ranker, loss, self.loss, thresh=0.0,
             rank_by_soft_output=self.rank_by_soft_output,
             query_idx_in_rankingset=batch_idx,
-            use_Jaccard = self.use_jaccard
+            use_jaccard = self.use_jaccard,
         )
-        
+        ranks = rank_res.cpu().tolist()
         if type(self.test_step_outputs)==list:
             self.test_step_outputs.append(metrics)
-        return metrics, rank_1_hits
+        return metrics, mw_list, ranks
     
 
     def predict_step(self, batch, batch_idx, return_representations=False):
@@ -264,8 +273,8 @@ class SPECTRE(pl.LightningModule):
             store=self.fp_loader.build_inference_ranking_set_with_everything(
                 fp_dim = self.fp_length, 
                 max_radius = self.fp_radius,
-                use_hyun_fp=use_hyun_fp,
-                test_on_deepsat_retrieval_set=self.test_on_deepsat_retrieval_set),
+                use_hyun_fp=use_hyun_fp
+            ),
             batch_size=self.batch_size, CE_num_class=self.num_class, need_to_normalize=False
         )
 
@@ -274,7 +283,6 @@ class OptionalInputSPECTRE(SPECTRE):
         super().__init__(args, fp_loader)
         self.validation_step_outputs = defaultdict(list)
         self.test_step_outputs = defaultdict(list)
-        self.test_np_classes_rank1 = defaultdict(lambda : defaultdict(list))
         self.all_dataset_names = combinations_names
         self.loader_idx = None
         self.validate_all = args.validate_all
@@ -293,7 +301,17 @@ class OptionalInputSPECTRE(SPECTRE):
             current_batch_name = 'ALL'
         else:
             current_batch_name = self.all_dataset_names[dataloader_idx]
-        metrics, rank_1_hits = super().test_step(batch, batch_idx)
+        metrics, mw_list, ranks = super().test_step(batch, batch_idx)
+        if not hasattr(self, "mw_rank_records"):
+            self.mw_rank_records = {name: [] for name in self.all_dataset_names}
+
+        for mw, rank in zip(mw_list, ranks):
+            self.mw_rank_records[current_batch_name].append({
+                "mw": mw,
+                "rank_1": int(rank < 1),
+                "rank_5": int(rank < 5),
+                "rank_10": int(rank < 10),
+            })
         self.test_step_outputs[current_batch_name].append(metrics)
 
         return metrics
