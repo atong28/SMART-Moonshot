@@ -10,9 +10,9 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning.callbacks as cb
 import pytorch_lightning as pl
 
-from src.settings import Args
-from src.model import SPECTRE, OptionalInputSPECTRE
-from src.dataset import MoonshotDataModule
+from .src.settings import Args
+from .src.model import SPECTRE, OptionalInputSPECTRE
+from .src.dataset import MoonshotDataModule
 
 
 def test(args: Args, data_module: MoonshotDataModule, results_path: str, model: SPECTRE | OptionalInputSPECTRE, ckpt_path: str | None = None, wandb_run = None):

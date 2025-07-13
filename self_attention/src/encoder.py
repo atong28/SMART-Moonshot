@@ -128,7 +128,7 @@ class CoordinateEncoder(torch.nn.Module):
 
         return torch.cat(embeddings, dim=2)
 
-class SignCoordinateEncoder(torch.nn.Module):
+'''class SignCoordinateEncoder(torch.nn.Module):
     """
     Generate positional encoding of coordinates, except the final bit
     is binary encoded as 0 or 1. 
@@ -158,33 +158,31 @@ class SignCoordinateEncoder(torch.nn.Module):
         super().__init__()
         self.logger = logging.getLogger("lightning")
         assert (sum(dim_coords) == dim_model)
-        if wavelength_bounds:
-            assert (len(wavelength_bounds) == len(dim_coords) - 1)
         self.sign_embedding_dims = dim_model - sum(dim_coords[:-1])
         self.positional_encoders = []
         self.dim_coords = dim_coords
         self.use_peak_values = use_peak_values
         for idx, dim in enumerate(dim_coords[:-1]):
+            if dim == 0:
+                continue
             if wavelength_bounds:
                 min_wavelength = wavelength_bounds[idx][0]
                 max_wavelength = wavelength_bounds[idx][1]
-                p = PositionalEncoder(dim_model=dim,
-                                    min_wavelength=min_wavelength,
-                                    max_wavelength=max_wavelength)
-                # self.logger.warning(
-                #     f"Pushed an encoder with bounds {min_wavelength}, {max_wavelength}")
-                # self.logger.warning(
-                #     f"Sin wavelengths: {str(np.round(2 * torch.pi / p.sin_terms, 3))}")
-                # self.logger.warning(
-                #     f"Cos wavelengths: {str(np.round(2 * torch.pi / p.cos_terms, 3))}")
+                p = PositionalEncoder(
+                    dim_model=dim,
+                    min_wavelength=min_wavelength,
+                    max_wavelength=max_wavelength
+                )
             else:
                 p = PositionalEncoder(dim_model=dim)
                 self.logger.warning(
                     f"Pushed an encoder with no bounds")
             self.positional_encoders.append(p)
-        self.logger.warning(f"Initialized SignCoordinateEncoder[{dim_model}] with dims " +
-                            f"{self.dim_coords} and {len(self.positional_encoders)} positional encoders. " +
-                            f"{self.sign_embedding_dims} bits are reserved for encoding the final bit")
+        self.logger.warning(
+            f"Initialized SignCoordinateEncoder[{dim_model}] with dims "
+            f"{self.dim_coords} and {len(self.positional_encoders)} positional encoders. "
+            f"{self.sign_embedding_dims} bits are reserved for encoding the final bit"
+        )
 
     def forward(self, X):
         """Encode coordinates
@@ -192,11 +190,13 @@ class SignCoordinateEncoder(torch.nn.Module):
         ----------
         X : torch.Tensor of shape (batch_size, n_coords, n_dimensions) (32*50*3)
             The coordinates to embed
+            Or X can be (B * N, D)
         Returns
         -------
         torch.Tensor of shape (batch_size, n_coords, dim_model)
             The encoded coordinates
         """
+        print(X.shape)
         assert (X.shape[2] == len(self.dim_coords))
         embeddings = []
         for dim, encoder in enumerate(self.positional_encoders):
@@ -214,7 +214,84 @@ class SignCoordinateEncoder(torch.nn.Module):
                 embeddings.append(signs)
                 # print(signs)
                 # exit(0)
-        return torch.cat(embeddings, dim=2)
+        return torch.cat(embeddings, dim=2)'''
+
+class SignCoordinateEncoder(torch.nn.Module):
+    """
+    Positional encoding for coordinates, with a special binary/sign dimension at the end.
+
+    Expects input X of shape (B*N, D), where D == len(dim_coords)
+    """
+    def __init__(
+        self,
+        dim_model,
+        dim_coords,
+        wavelength_bounds=None,
+        use_peak_values=False
+    ):
+        super().__init__()
+        self.logger = logging.getLogger("lightning")
+        assert sum(dim_coords) == dim_model
+        self.sign_embedding_dims = dim_model - sum(dim_coords[:-1])
+        self.positional_encoders = []
+        self.dim_coords = dim_coords
+        self.use_peak_values = use_peak_values
+
+        wavelength_index = 0
+        for idx, dim in enumerate(dim_coords[:-1]):
+            if dim == 0:
+                self.positional_encoders.append(None)
+                continue
+            if wavelength_bounds:
+                min_wavelength, max_wavelength = wavelength_bounds[wavelength_index]
+                p = PositionalEncoder(
+                    dim_model=dim,
+                    min_wavelength=min_wavelength,
+                    max_wavelength=max_wavelength
+                )
+                wavelength_index += 1
+            else:
+                p = PositionalEncoder(dim_model=dim)
+            self.positional_encoders.append(p)
+
+        self.logger.warning(
+            f"Initialized SignCoordinateEncoder[{dim_model}] with dims {self.dim_coords}, "
+            f"{len([p for p in self.positional_encoders if p is not None])} encoders, "
+            f"and {self.sign_embedding_dims} bits reserved for the final dimension."
+        )
+
+    def forward(self, X):
+        """
+        Parameters
+        ----------
+        X : Tensor of shape (B*N, D)
+            Coordinates to encode, one row per data point
+
+        Returns
+        -------
+        Tensor of shape (B*N, dim_model)
+        """
+        assert X.shape[1] == len(self.dim_coords)
+        embeddings = []
+
+        for dim, encoder in enumerate(self.positional_encoders):
+            if encoder is None:
+                continue
+            coord = X[:, dim:dim+1]  # shape (B*N, 1)
+            encoded = encoder(coord)  # shape (B*N, dim_for_dim)
+            embeddings.append(encoded)
+
+        if self.sign_embedding_dims:
+            last_dim = X[:, -1:]
+            if self.use_peak_values:
+                repeated = last_dim.expand(-1, self.sign_embedding_dims)
+                embeddings.append(repeated)
+            else:
+                signs = torch.sign(last_dim).expand(-1, self.sign_embedding_dims)
+                embeddings.append(signs)
+
+        return torch.cat(embeddings, dim=1)
+
 
 def build_encoder(
     dim_model: int, 

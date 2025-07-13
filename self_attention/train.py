@@ -12,11 +12,11 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 import torch.distributed as dist
 
-from src.settings import Args
-from src.model import SPECTRE, OptionalInputSPECTRE
-from src.dataset import MoonshotDataModule
+from .src.settings import Args
+from .src.model import SPECTRE, OptionalInputSPECTRE
+from .src.dataset import MoonshotDataModule
 
-from test import test
+from .test import test
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0

@@ -8,12 +8,12 @@ from datetime import datetime
 import json
 import wandb
 
-from src.fp_loaders import get_fp_loader
-from src.settings import Args
-from src.dataset import MoonshotDataModule
-from src.model import build_model
-from train import train
-from test import test
+from self_attention.src.fp_loaders import get_fp_loader
+from self_attention.src.settings import Args
+from self_attention.src.dataset import MoonshotDataModule
+from self_attention.src.model import build_model
+from self_attention.train import train
+from self_attention.test import test
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0

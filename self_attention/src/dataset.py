@@ -175,8 +175,13 @@ class MoonshotDataset(Dataset):
 
         if 'mass_spec' in self.input_types and data_obj['has_mass_spec']:
             if 'mass_spec' in self.requires or ('mass_spec' not in self.requires and random.random() >= DROP_MS_PERCENTAGE):
-                data_inputs['mass_spec'] = torch.load(os.path.join(self.root, 'MassSpec', filename), weights_only=True).float()
-            # TODO: should we jitter?
+                ms = torch.load(os.path.join(self.root, 'MassSpec', filename), weights_only=True).float()
+                if self.jittering > 0 and self.split == 'train':
+                    noise = torch.zeros_like(ms)
+                    noise[:, 0] = torch.randn_like(ms[:, 0]) * ms[:, 0] / 100_000  # jitter m/z
+                    noise[:, 1] = torch.randn_like(ms[:, 1]) * ms[:, 1] / 10
+                    ms = ms + noise
+                data_inputs['mass_spec'] = ms
 
         if 'iso_dist' in self.input_types and data_obj['has_iso_dist']:
             if 'iso_dist' in self.requires or ('iso_dist' not in self.requires and random.random() >= DROP_ID_PERCENTAGE):

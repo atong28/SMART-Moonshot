@@ -61,14 +61,33 @@ class SPECTRE(pl.LightningModule):
         self.freeze_weights = args.freeze_weights
 
         # ranked encoder
-        self.enc = build_encoder(
+        self.enc_nmr = build_encoder(
             args.dim_model,
-            args.dim_coords,
-            args.wavelength_bounds,
+            args.nmr_dim_coords,
+            [args.c_wavelength_bounds, args.h_wavelength_bounds],
             args.use_peak_values
         )
+        self.enc_ms = build_encoder(
+            args.dim_model,
+            args.ms_id_dim_coords,
+            [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
+            args.use_peak_values
+        )
+        self.enc_id = build_encoder(
+            args.dim_model,
+            args.ms_id_dim_coords,
+            [args.id_wavelength_bounds, args.abundance_wavelength_bounds],
+            args.use_peak_values
+        )
+        self.enc_mw = build_encoder(
+            args.dim_model,
+            args.mw_dim_coords,
+            [args.mw_wavelength_bounds],
+            args.use_peak_values
+        )
+        self.encoder_list = [self.enc_nmr, self.enc_nmr, self.enc_nmr, self.enc_mw, self.enc_id, self.enc_ms]
         if self.global_rank == 0:
-            logger.info(f"[SPECTRE] Using {str(self.enc.__class__)}")
+            logger.info(f"[SPECTRE] Using {str(self.enc_nmr.__class__)}")
 
         self.bce_pos_weight = None
         logger.info("[SPECTRE] bce_pos_weight = None")
@@ -106,7 +125,7 @@ class SPECTRE(pl.LightningModule):
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
 
-    def encode(self, hsqc, type_indicator, mask=None):
+    def encode(self, x, type_indicator, mask=None):
         """
         Returns
         -------
@@ -116,26 +135,69 @@ class SPECTRE(pl.LightningModule):
         mem_mask : torch.Tensor
             The memory mask specifying which elements were padding in X.
         """
-        if mask is None:
-            '''zeros = ~hsqc.sum(dim=2).bool()
-            mask = [
-                torch.tensor([[False]] * hsqc.shape[0]).type_as(zeros),
-                zeros,
-            ]
-            mask = torch.cat(mask, dim=1)
-            mask = mask.to(self.device)'''
-            zeros = ~hsqc.sum(dim=2).bool()
-            prefix_mask = torch.zeros((hsqc.size(0), 1), dtype=torch.bool, device=hsqc.device)
+        '''if mask is None:
+            zeros = ~x.sum(dim=2).bool()
+            prefix_mask = torch.zeros((x.size(0), 1), dtype=torch.bool, device=x.device)
             mask = torch.cat([prefix_mask, zeros], dim=1).to(dtype=torch.bool)
-
-        points = self.enc(hsqc)
+        x_nmr = x[type_indicator <= 2]
+        x_ms = x[type_indicator == 5]
+        x_id = x[type_indicator == 4]
+        x_mw = x[type_indicator == 3]
+        
+        points_nmr = self.enc_nmr(x_nmr) if x_nmr.shape[0] > 0 else None # encode NMR
+        points_ms = self.enc_ms(x_ms) if x_ms.shape[0] > 0 else None # encode MS
+        points_id = self.enc_id(x_id) if x_id.shape[0] > 0 else None # encode ID
+        points_mw = self.enc_mw(x_mw) if x_mw.shape[0] > 0 else None # encode MW
+        
+        points = torch.empty_like(x)
+        if points_nmr is not None:
+            points[type_indicator <= 2] = points_nmr
+        if points_ms is not None:
+            points[type_indicator == 5] = points_ms
+        if points_id is not None:
+            points[type_indicator == 4] = points_id
+        if points_mw is not None:
+            points[type_indicator == 3] = points_mw
+        
         type_embedding = self.embedding(type_indicator)
         points += type_embedding
         latent = self.latent.expand(points.shape[0], -1, -1)
         points = torch.cat([latent, points], dim=1)
       
         out = self.transformer_encoder(points, src_key_padding_mask=mask)
+        return out, mask'''
+    def encode(self, x, type_indicator, mask=None):
+        """
+        x: Tensor of shape (B, N, D)
+        type_indicator: Tensor of shape (B, N) — per peak
+        Returns:
+            - out: (B, N+1, dim_model)
+            - mask: (B, N+1)
+        """
+        B, N, D = x.shape
+        device = x.device
+        dim_model = self.latent.shape[-1]
+
+        if mask is None:
+            zeros = ~x.sum(dim=2).bool()  # (B, N)
+            prefix_mask = torch.zeros((B, 1), dtype=torch.bool, device=device)
+            mask = torch.cat([prefix_mask, zeros], dim=1)  # (B, N+1)
+        x_flat = x.reshape(B * N, D)
+        type_flat = type_indicator.reshape(B * N)
+        points_flat = torch.zeros((B * N, dim_model), device=device)
+
+        for type_val, encoder in enumerate(self.encoder_list):
+            idx = type_flat == type_val  # (B*N,)
+            if idx.any():
+                points_flat[idx] = encoder(x_flat[idx])
+        points = points_flat.reshape(B, N, dim_model)
+        type_embed = self.embedding(type_indicator)  # (B, N, dim_model)
+        points += type_embed
+        latent = self.latent.expand(B, 1, -1)
+        points = torch.cat([latent, points], dim=1)
+        out = self.transformer_encoder(points, src_key_padding_mask=mask)
         return out, mask
+
     
     def forward(self, hsqc, type_indicator, return_representations=False):
         """The forward pass.
@@ -167,11 +229,11 @@ class SPECTRE(pl.LightningModule):
         inputs, labels, NMR_type_indicator = batch
         out = self.forward(inputs, NMR_type_indicator)
         loss = self.loss(out, labels)
-        metrics, rank_1_hits = self.compute_metric_func(
+        metrics, _ = self.compute_metric_func(
             out, labels, self.ranker, loss, self.loss, thresh=0.0, 
             rank_by_soft_output=self.rank_by_soft_output,
             query_idx_in_rankingset=batch_idx,
-            use_Jaccard = self.use_jaccard,
+            use_jaccard = self.use_jaccard,
             no_ranking = True
             )
         
@@ -201,7 +263,6 @@ class SPECTRE(pl.LightningModule):
         if type(self.test_step_outputs)==list:
             self.test_step_outputs.append(metrics)
         return metrics, mw_list, ranks
-    
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         x, smiles_chemical_name = batch

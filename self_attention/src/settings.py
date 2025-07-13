@@ -5,7 +5,7 @@ from dataclasses import field
 @dataclass
 class Args:
     experiment_name: str = 'spectre_reproduce'
-    code_root: str = '/root/gurusmart/Moonshot'
+    code_root: str = '/root/gurusmart/Moonshot/self_attention'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'
@@ -35,14 +35,22 @@ class Args:
 
     # model args
     dim_model: int = 784
-    dim_coords: List[int] = field(default_factory=lambda: [365, 365, 54])
+    nmr_dim_coords: List[int] = field(default_factory=lambda: [365, 365, 54])
+    ms_id_dim_coords: List[int] = field(default_factory=lambda: [392, 392, 0])
+    mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
     heads: int = 8
     layers: int = 16
     ff_dim: int = 3072
     out_dim: int = 16384
     accumulate_grad_batches_num: int = 4
 
-    wavelength_bounds: Optional[None] = None
+    c_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 400.0])
+    h_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 20.0])
+    mz_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 5000.0])
+    intensity_wavelength_bounds: List[float] = field(default_factory=lambda: [0.001, 200.0])
+    id_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 7000.0])
+    abundance_wavelength_bounds: List[float] = field(default_factory=lambda: [0.0001, 2.0])
+    mw_wavelength_bounds: List[float] = field(default_factory=lambda: [0.0001, 7000.0])
     dropout: float = 0.1
     save_params: bool = True
     ranking_set_path: str = ''

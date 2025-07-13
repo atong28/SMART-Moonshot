@@ -1,7 +1,7 @@
 import pickle
 import os
 
-DATA_ROOT = '/workspace/CombinedDataset'
+DATA_ROOT = '/workspace'
 ms_data = set(os.listdir(f'{DATA_ROOT}/MassSpec'))
 id_data = set(os.listdir(f'{DATA_ROOT}/IsoDist'))
 hsqc_data = set(os.listdir(f'{DATA_ROOT}/HSQC_NMR'))
