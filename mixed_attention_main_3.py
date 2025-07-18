@@ -13,13 +13,13 @@ import random
 import torch
 import pytorch_lightning as pl
 
-from mixed_attention_2.src.fp_loaders import get_fp_loader
-from mixed_attention_2.src.settings import Args
-from mixed_attention_2.src.dataset import MoonshotDataModule
-from mixed_attention_2.src.model import build_model
-from mixed_attention_2.train import train
-from mixed_attention_2.test import test
-from mixed_attention_2.debug import debug
+from mixed_attention_3.src.fp_loaders import get_fp_loader
+from mixed_attention_3.src.settings import Args
+from mixed_attention_3.src.dataset import MoonshotDataModule
+from mixed_attention_3.src.model import build_model
+from mixed_attention_3.train import train
+from mixed_attention_3.test import test
+from mixed_attention_3.debug import debug
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
@@ -148,7 +148,7 @@ if __name__ == "__main__":
 
         # initialize file logger
         logger = init_logger(results_path)
-        logger.info("[main] parsed args:\n%s", args)
+        logger.info("[Main] Parsed args:\n%s", args)
 
         # dump params.json
         with open(os.path.join(results_path, "params.json"), "w") as fp:

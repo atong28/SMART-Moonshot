@@ -137,9 +137,9 @@ if __name__ == "__main__":
     seed_everything(args.seed)
 
     # ---- everyone computes the same path string ----
-    today         = datetime.now().strftime("%Y-%m-%d")
-    results_path  = os.path.join(args.data_root,  "results", args.experiment_name, today)
-    final_path    = os.path.join(args.code_root,  "results", args.experiment_name, today)
+    today = datetime.now().strftime("%Y-%m-%d")
+    results_path = os.path.join(args.data_root,  "results", args.experiment_name, today)
+    final_path = os.path.join(args.code_root,  "results", args.experiment_name, today)
     experiment_id = f"{args.experiment_name}_{today}"
 
     # ---- local rank 0 does all of the side‐effects ----
@@ -168,9 +168,9 @@ if __name__ == "__main__":
         wandb_run = None
 
     # ---- now every rank instantiates data+model+trainer normally ----
-    fp_loader   = get_fp_loader(args)
+    fp_loader = get_fp_loader(args)
     data_module = MoonshotDataModule(args, results_path, fp_loader)
-    model       = build_model(
+    model = build_model(
         args,
         optional_inputs=(set(args.requires) != set(args.input_types)),
         fp_loader=fp_loader,

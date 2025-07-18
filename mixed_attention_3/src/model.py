@@ -106,14 +106,8 @@ class SPECTRE(pl.LightningModule):
         )
         self.enc_ms = build_encoder(
             args.dim_model,
-            args.ms_id_dim_coords,
+            args.ms_dim_coords,
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
-            args.use_peak_values
-        )
-        self.enc_id = build_encoder(
-            args.dim_model,
-            args.ms_id_dim_coords,
-            [args.id_wavelength_bounds, args.abundance_wavelength_bounds],
             args.use_peak_values
         )
 
@@ -123,7 +117,6 @@ class SPECTRE(pl.LightningModule):
             "h_nmr": self.enc_nmr,
             "c_nmr": self.enc_nmr,
             "mass_spec": self.enc_ms,
-            "iso_dist": self.enc_id,
         }
         self.encoders = nn.ModuleDict({k: v for k, v in self.encoders.items() if k in self.args.input_types})
         
@@ -157,7 +150,7 @@ class SPECTRE(pl.LightningModule):
             dim_feedforward=self.ff_dim,
             batch_first=True, dropout=self.dropout
         )
-        self.modality_mixer = nn.TransformerEncoder(mixer_layer, num_layers=8)
+        self.modality_mixer = nn.TransformerEncoder(mixer_layer, num_layers=self.layers)
         
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
@@ -214,9 +207,9 @@ class SPECTRE(pl.LightningModule):
 
             if nonempty.any():
                 # gather only non-empty
-                pts_ne  = points[nonempty]      # (N_kept, L, D_model)
-                cls_ne  = cls_m[nonempty]       # (N_kept, 1, D_model)
-                mask_ne = mask[nonempty]        # (N_kept, L)
+                pts_ne = points[nonempty]                                       # (N_kept, L, D_model)
+                cls_ne = cls_m[nonempty]                                        # (N_kept, 1, D_model)
+                mask_ne = mask[nonempty]                                        # (N_kept, L)
                 # cross-attend for those
                 out_ne  = self.cross_attn[m](
                     query=cls_ne,
@@ -230,17 +223,19 @@ class SPECTRE(pl.LightningModule):
             # fully-empty samples keep their initial cls_m
             modal_outputs.append(cls_m)
 
-        global_token = self.global_cls.expand(B,1,-1)
-        stacked = torch.cat([global_token, *modal_outputs], dim=1)  # M = number of non‐mw modalities
-        mixed   = self.modality_mixer(stacked)     # (B, M, D_model)
-        cls_rep = mixed[:, 0, :]                   # (B, D_model)
-        mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).squeeze(-1)  # (B, D_model)
-        final   = cls_rep + mw_feat               # (B, D_model)
+        # — now also treat MW as a modality token —
+        global_token = self.global_cls.expand(B,1,-1)                           # (B,1,D)
+        mw_token = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)        # (B,1,D)
+
+        # stack: [ global_cls | each modality cls | mw_token ]
+        stacked = torch.cat([global_token, *modal_outputs, mw_token], dim=1)  
+        mixed = self.modality_mixer(stacked)                                    # (B, M+2, D_model)
+        cls_rep = mixed[:, 0, :]                                                # (B, D_model)
 
         # project to fingerprint logits
-        out = self.fc(final)                       # (B, out_dim)
+        out = self.fc(cls_rep)
         if return_representations:
-            return final.detach().cpu().numpy()
+            return cls_rep.detach().cpu().numpy()
         return out
 
     def training_step(self, batch, batch_idx):

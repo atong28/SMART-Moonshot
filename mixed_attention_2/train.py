@@ -73,7 +73,7 @@ def train(args: Args, data_module: MoonshotDataModule, model: SPECTRE | Optional
         logger=wandb_logger, 
         callbacks=[early_stopping, lr_monitor, ckpt_callback],
         accumulate_grad_batches=args.accumulate_grad_batches_num,
-        strategy='ddp',
+        strategy='ddp_find_unused_parameters_true',
         gradient_clip_val=1.0
     )
     logger.info(f"[Main] Model Summary: {summarize(model)}")
