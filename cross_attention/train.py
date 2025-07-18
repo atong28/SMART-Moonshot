@@ -41,18 +41,7 @@ def init_logger(path):
         logger.addHandler(logging.StreamHandler(sys.stdout))
     return logger
 
-def seed_everything(seed):
-    """
-    Set the random seed for reproducibility.
-    """
-    pl.seed_everything(seed, workers=True)
-    torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed) 
-    np.random.seed(seed)
-    random.seed(seed)
-
 def train(args: Args, data_module: MoonshotDataModule, model: SPECTRE | OptionalInputSPECTRE, results_path: str, wandb_run = None):
-    seed_everything(seed=args.seed)
     torch.set_float32_matmul_precision('medium')
 
     if args.debug:

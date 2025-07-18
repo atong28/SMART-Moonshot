@@ -159,6 +159,7 @@ class SPECTRE(pl.LightningModule):
         )
         self.modality_mixer = nn.TransformerEncoder(mixer_layer, num_layers=2)
         
+        self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
 
@@ -279,8 +280,8 @@ class SPECTRE(pl.LightningModule):
             # fully-empty samples keep their initial cls_m
             modal_outputs.append(cls_m)
 
-        # stack into (B, M, D) and mix
-        stacked = torch.cat(modal_outputs, dim=1)  # M = number of non‐mw modalities
+        global_token = self.global_cls.expand(B,1,-1)
+        stacked = torch.cat([global_token, *modal_outputs], dim=1)  # M = number of non‐mw modalities
         mixed   = self.modality_mixer(stacked)     # (B, M, D_model)
         cls_rep = mixed[:, 0, :]                   # (B, D_model)
         mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).squeeze(-1)  # (B, D_model)

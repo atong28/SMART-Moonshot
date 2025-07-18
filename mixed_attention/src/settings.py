@@ -5,7 +5,7 @@ from dataclasses import field
 @dataclass
 class Args:
     experiment_name: str = 'mixed-attention-development'
-    code_root: str = '/root/gurusmart/Moonshot/self_attention'
+    code_root: str = '/root/gurusmart/Moonshot/mixed_attention'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'

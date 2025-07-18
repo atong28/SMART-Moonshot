@@ -13,13 +13,13 @@ import random
 import torch
 import pytorch_lightning as pl
 
-from cross_attention.src.fp_loaders import get_fp_loader
-from cross_attention.src.settings import Args
-from cross_attention.src.dataset import MoonshotDataModule
-from cross_attention.src.model import build_model
-from cross_attention.train import train
-from cross_attention.test import test
-from cross_attention.debug import debug
+from mixed_attention_2.src.fp_loaders import get_fp_loader
+from mixed_attention_2.src.settings import Args
+from mixed_attention_2.src.dataset import MoonshotDataModule
+from mixed_attention_2.src.model import build_model
+from mixed_attention_2.train import train
+from mixed_attention_2.test import test
+from mixed_attention_2.debug import debug
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0

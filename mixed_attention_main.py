@@ -133,50 +133,66 @@ def seed_everything(seed):
     random.seed(seed)
 
 if __name__ == "__main__":
-    with open('/root/gurusmart/wandb_api_key.json', 'r') as f:
-        wandb.login(key=json.load(f)['key'])
     args = parse_args()
-    seed_everything(seed=args.seed)
-    now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
-    results_path = os.path.join(args.data_root, 'results', args.experiment_name, now)
-    final_results_path = os.path.join(args.code_root, 'results', args.experiment_name, now)
-    experiment_name = args.experiment_name + f'_{now}'
-    while os.path.exists(results_path):
-        results_path += '_copy'
-    os.makedirs(results_path, exist_ok=True)
-    logger = init_logger(results_path)    
-    logger.info('[Main] Parsed args:')
-    logger.info(args)
-    with open(os.path.join(results_path, 'params.json'), 'w') as f:
-        json.dump(args.__dict__, f)
-    fp_loader = get_fp_loader(args)
+    seed_everything(args.seed)
+
+    # ---- everyone computes the same path string ----
+    today         = datetime.now().strftime("%Y-%m-%d")
+    results_path  = os.path.join(args.data_root,  "results", args.experiment_name, today)
+    final_path    = os.path.join(args.code_root,  "results", args.experiment_name, today)
+    experiment_id = f"{args.experiment_name}_{today}"
+
+    # ---- local rank 0 does all of the side‐effects ----
+    if is_main_process():
+        os.makedirs(results_path, exist_ok=True)
+
+        # initialize file logger
+        logger = init_logger(results_path)
+        logger.info("[main] parsed args:\n%s", args)
+
+        # dump params.json
+        with open(os.path.join(results_path, "params.json"), "w") as fp:
+            json.dump(vars(args), fp, indent=2)
+
+        # login & start wandb
+        with open("/root/gurusmart/wandb_api_key.json") as kf:
+            wandb.login(key=json.load(kf)["key"])
+        wandb_run = wandb.init(
+            project="SPECTRE",
+            name=experiment_id,
+            config=vars(args),
+            resume="allow",
+        )
+    else:
+        # other ranks skip everything
+        wandb_run = None
+
+    # ---- now every rank instantiates data+model+trainer normally ----
+    fp_loader   = get_fp_loader(args)
     data_module = MoonshotDataModule(args, results_path, fp_loader)
-    optional_inputs = set(args.requires) != set(args.input_types)
-    model = build_model(args, optional_inputs, fp_loader, combinations_names=data_module.combinations_names)
+    model       = build_model(
+        args,
+        optional_inputs=(set(args.requires) != set(args.input_types)),
+        fp_loader=fp_loader,
+        combinations_names=data_module.combinations_names,
+    )
+
     if args.develop:
-        logger.info('[Main] Entering develop stage')
+        if is_main_process():
+            logger.info("[Main] Entering develop mode")
         debug(args, data_module, model)
         sys.exit(0)
+
     if args.train:
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            wandb_run = wandb.init(
-                project='SPECTRE',
-                name=experiment_name,
-                config=args.__dict__,
-                resume="allow",
-            )
-        else:
-            wandb_run = None
         train(args, data_module, model, results_path, wandb_run=wandb_run)
     elif args.test:
-        if int(os.environ.get("LOCAL_RANK", 0)) == 0:
-            test(args, data_module, results_path, model, ckpt_path=args.load_from_checkpoint, wandb_run=None)
+        test(args, data_module, results_path, model, ckpt_path=args.load_from_checkpoint, wandb_run=wandb_run)
     else:
-        raise ValueError('Both train and test are disabled, nothing to do!')
-    
-    logger.info('[Main] Experiment complete! Copying the results folder to its final destination')
-    logger.info(f'[Main] Copying {results_path} to {final_results_path}')
-    os.makedirs(os.path.dirname(final_results_path), exist_ok=True)
-    shutil.copytree(results_path, final_results_path, dirs_exist_ok=True)
-    logger.info('[Main] Done!')
-    wandb.finish()
+        raise ValueError("[Main] Train and test both disabled, nothing to do!")
+
+    # ---- only rank0 does the final copy + wandb.finish ----
+    if is_main_process():
+        logger.info("[Main] Copying results to final destination")
+        os.makedirs(os.path.dirname(final_path), exist_ok=True)
+        shutil.copytree(results_path, final_path, dirs_exist_ok=True)
+        wandb.finish()

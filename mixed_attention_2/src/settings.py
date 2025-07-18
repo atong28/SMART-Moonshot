@@ -1,11 +1,11 @@
-from typing import Literal, List, Optional
+from typing import Literal, List, Dict, Optional
 from pydantic.dataclasses import dataclass
 from dataclasses import field
 
 @dataclass
 class Args:
-    experiment_name: str = 'development'
-    code_root: str = '/root/gurusmart/Moonshot/cross_attention'
+    experiment_name: str = 'mixed-attention-2-development'
+    code_root: str = '/root/gurusmart/Moonshot/mixed_attention_2'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'
@@ -40,6 +40,7 @@ class Args:
     mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
     heads: int = 8
     layers: int = 16
+    self_attn_layers: Dict[str, int] = field(default_factory=lambda: {'hsqc': 3, 'h_nmr': 2, 'c_nmr': 2, 'mass_spec': 3, 'iso_dist': 2, 'mw': 0})
     ff_dim: int = 3072
     out_dim: int = 16384
     accumulate_grad_batches_num: int = 4
