@@ -21,6 +21,43 @@ if dist.is_initialized():
         logger.setLevel(logging.WARNING)
 logger_should_sync_dist = torch.cuda.device_count() > 1
 
+class CrossAttentionBlock(nn.Module):
+    """
+    Single cross‑attention + feed‑forward block.
+    Query attends to Key/Value (the spectral peaks).
+    """
+    def __init__(self, dim_model, num_heads, ff_dim, dropout=0.1):
+        super().__init__()
+        self.attn = nn.MultiheadAttention(
+            embed_dim=dim_model, 
+            num_heads=num_heads, 
+            dropout=dropout,
+            batch_first=True    # so inputs are (B, L, D)
+        )
+        self.norm1 = nn.LayerNorm(dim_model)
+        self.ff = nn.Sequential(
+            nn.Linear(dim_model, ff_dim),
+            nn.ReLU(inplace=True),
+            nn.Dropout(dropout),
+            nn.Linear(ff_dim, dim_model),
+        )
+        self.norm2 = nn.LayerNorm(dim_model)
+
+    def forward(self, query, key, value, key_padding_mask=None):
+        # query: (B, Q, D); key/value: (B, S, D)
+        attn_out, _ = self.attn(
+            query=query, 
+            key=key, 
+            value=value, 
+            key_padding_mask=key_padding_mask
+        )
+        # residual + norm
+        q1 = self.norm1(query + attn_out)
+        # feed‑forward + norm
+        ff_out = self.ff(q1)
+        out  = self.norm2(q1 + ff_out)
+        return out
+
 class SPECTRE(pl.LightningModule):
     def __init__(self, args: Args, fp_loader: EntropyFPLoader):
         super().__init__()
@@ -104,22 +141,21 @@ class SPECTRE(pl.LightningModule):
         self.fc = nn.Linear(self.dim_model, self.out_dim)
         self.latent = torch.nn.Parameter(torch.randn(1, 1, self.dim_model))
 
-        layer = torch.nn.TransformerEncoderLayer(
-            d_model=self.dim_model,
-            nhead=self.heads,
-            dim_feedforward=self.ff_dim,
-            batch_first=True,
-            dropout=self.dropout,
-        )
-        self.transformer_encoder = torch.nn.TransformerEncoder(
-            layer,
-            num_layers=self.layers,
-        )
+        self.cross_blocks = nn.ModuleList([
+            CrossAttentionBlock(
+                dim_model=self.dim_model,
+                num_heads=self.heads,
+                ff_dim=self.ff_dim,
+                dropout=self.dropout
+            )
+            for _ in range(self.layers)
+        ])
+        
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
         if self.l1_decay > 0:
-            self.transformer_encoder = L1(self.transformer_encoder, self.l1_decay)
+            self.cross_blocks = L1(self.cross_blocks, self.l1_decay)
             self.fc = L1(self.fc, self.l1_decay)
 
         if self.global_rank == 0:
@@ -150,14 +186,21 @@ class SPECTRE(pl.LightningModule):
             if idx.any():
                 points_flat[idx] = encoder(x_flat[idx])
         points = points_flat.reshape(B, N, dim_model)
-        type_embed = self.embedding(type_indicator)  # (B, N, dim_model)
-        points += type_embed
-        latent = self.latent.expand(B, 1, -1)
-        points = torch.cat([latent, points], dim=1)
-        out = self.transformer_encoder(points, src_key_padding_mask=mask)
-        return out, mask
+        type_embed = self.embedding(type_indicator)
+        points = points + type_embed               # (B, N, D)
+        latent = self.latent.expand(B, 1, -1)      # (B, 1, D)
 
-    
+        # Now run L cross‑attention blocks:
+        for block in self.cross_blocks:
+            # mask[:,1:] masks the padded peaks
+            latent = block(
+                query=latent, 
+                key=points, 
+                value=points, 
+                key_padding_mask=mask[:,1:]
+            )
+        return latent, mask
+
     def forward(self, hsqc, type_indicator, return_representations=False):
         """The forward pass.
         Parameters
@@ -169,10 +212,11 @@ class SPECTRE(pl.LightningModule):
             should be zero-padded, such that all of the hsqc in the batch
             are the same length.
         """
-        out, _ = self.encode(hsqc, type_indicator)  # (b_s, seq_len, dim_model)
-        out_cls = self.fc(out[:, :1, :].squeeze(1))  # extracts cls token : (b_s, dim_model) -> (b_s, out_dim)
+        latent, _ = self.encode(hsqc, type_indicator)
+        # latent is (B, 1, D): grab that token
+        out_cls = self.fc(latent.squeeze(1))
         if return_representations:
-            return out.detach().cpu().numpy()
+            return latent.squeeze(1).detach().cpu().numpy()
         return out_cls
 
     def training_step(self, batch, batch_idx):
@@ -324,8 +368,6 @@ class OptionalInputSPECTRE(SPECTRE):
         metrics, mw_list, ranks = super().test_step(batch, batch_idx)
         if not hasattr(self, "mw_rank_records"):
             self.mw_rank_records = {name: [] for name in self.all_dataset_names}
-        print(mw_list)
-        print(ranks)
         for mw, rank in zip(mw_list, ranks):
             self.mw_rank_records[current_batch_name].append({
                 "mw": mw,
@@ -376,7 +418,7 @@ class OptionalInputSPECTRE(SPECTRE):
 
 def build_model(args: Args, optional_inputs: bool, fp_loader: EntropyFPLoader, combinations_names = None):
     if optional_inputs:
-        print('[SPECTRE] Using optional input ranked transformer')
+        logger.info('[SPECTRE] Using optional input ranked transformer')
         return OptionalInputSPECTRE(args, fp_loader, combinations_names)
-    print('[SPECTRE] Using fixed input ranked transformer')
+    logger.info('[SPECTRE] Using fixed input ranked transformer')
     return SPECTRE(args, fp_loader)

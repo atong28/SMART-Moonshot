@@ -8,13 +8,18 @@ from datetime import datetime
 import json
 import wandb
 
-from cross_attention.src.fp_loaders import get_fp_loader
-from cross_attention.src.settings import Args
-from cross_attention.src.dataset import MoonshotDataModule
-from cross_attention.src.model import build_model
-from cross_attention.train import train
-from cross_attention.test import test
-from cross_attention.debug import debug
+import numpy as np
+import random
+import torch
+import pytorch_lightning as pl
+
+from mixed_attention.src.fp_loaders import get_fp_loader
+from mixed_attention.src.settings import Args
+from mixed_attention.src.dataset import MoonshotDataModule
+from mixed_attention.src.model import build_model
+from mixed_attention.train import train
+from mixed_attention.test import test
+from mixed_attention.debug import debug
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
@@ -117,11 +122,21 @@ def parse_args() -> Args:
 
     return Args(**args_dict)
 
+def seed_everything(seed):
+    """
+    Set the random seed for reproducibility.
+    """
+    pl.seed_everything(seed, workers=True)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed) 
+    np.random.seed(seed)
+    random.seed(seed)
+
 if __name__ == "__main__":
     with open('/root/gurusmart/wandb_api_key.json', 'r') as f:
         wandb.login(key=json.load(f)['key'])
     args = parse_args()
-        
+    seed_everything(seed=args.seed)
     now = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     results_path = os.path.join(args.data_root, 'results', args.experiment_name, now)
     final_results_path = os.path.join(args.code_root, 'results', args.experiment_name, now)

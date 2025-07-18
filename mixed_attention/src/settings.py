@@ -1,10 +1,10 @@
-from typing import Literal, List, Optional
+from typing import Literal, List, Dict, Optional
 from pydantic.dataclasses import dataclass
 from dataclasses import field
 
 @dataclass
 class Args:
-    experiment_name: str = 'spectre_reproduce'
+    experiment_name: str = 'mixed-attention-development'
     code_root: str = '/root/gurusmart/Moonshot/self_attention'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
@@ -30,7 +30,7 @@ class Args:
     validate_all: bool = False
     use_cached_datasets: bool = False
     
-    jittering: float = 0.0
+    jittering: float = 1.0
     use_peak_values: bool = False
 
     # model args
@@ -40,6 +40,7 @@ class Args:
     mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
     heads: int = 8
     layers: int = 16
+    self_attn_layers: Dict[str, int] = field(default_factory=lambda: {'hsqc': 3, 'h_nmr': 2, 'c_nmr': 2, 'mass_spec': 3, 'iso_dist': 2, 'mw': 0})
     ff_dim: int = 3072
     out_dim: int = 16384
     accumulate_grad_batches_num: int = 4
@@ -68,3 +69,5 @@ class Args:
     # testing args
     rank_by_soft_output: bool = True
     rank_by_test_set: bool = False
+
+    develop: bool = False
