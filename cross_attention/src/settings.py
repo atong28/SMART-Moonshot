@@ -69,4 +69,4 @@ class Args:
     rank_by_soft_output: bool = True
     rank_by_test_set: bool = False
 
-    develop: bool = False
+    visualize: bool = False

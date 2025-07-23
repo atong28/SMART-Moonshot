@@ -106,14 +106,8 @@ class SPECTRE(pl.LightningModule):
         )
         self.enc_ms = build_encoder(
             args.dim_model,
-            args.ms_id_dim_coords,
+            args.ms_dim_coords,
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
-            args.use_peak_values
-        )
-        self.enc_id = build_encoder(
-            args.dim_model,
-            args.ms_id_dim_coords,
-            [args.id_wavelength_bounds, args.abundance_wavelength_bounds],
             args.use_peak_values
         )
 
@@ -122,8 +116,7 @@ class SPECTRE(pl.LightningModule):
             "hsqc": self.enc_nmr,
             "h_nmr": self.enc_nmr,
             "c_nmr": self.enc_nmr,
-            "mass_spec": self.enc_ms,
-            "iso_dist": self.enc_id,
+            "mass_spec": self.enc_ms
         }
         self.encoders = nn.ModuleDict({k: v for k, v in self.encoders.items() if k in self.args.input_types})
         
@@ -134,31 +127,22 @@ class SPECTRE(pl.LightningModule):
                     dim_feedforward=self.ff_dim,
                     batch_first=True, dropout=self.dropout
                 ), 
-                num_layers= args.self_attn_layers[modality]
+                num_layers= args.self_attn_layers
             )
             for modality in self.encoders
         })
         
-        self.modal_cls = nn.ParameterDict()
-        for modality in self.encoders:
-            p = nn.Parameter(torch.empty(1,1,self.dim_model))
-            nn.init.xavier_uniform_(p)   # or nn.init.zeros_(p)
-            self.modal_cls[modality] = p
-        for name, p in self.modal_cls.items():
-            assert torch.isfinite(p).all(), f"{name} initialized to NaN!"
+        self.cross_blocks = nn.ModuleList([
+            CrossAttentionBlock(
+                dim_model=self.dim_model,
+                num_heads=self.heads,
+                ff_dim=self.ff_dim,
+                dropout=self.dropout
+            )
+            for _ in range(self.layers)
+        ])
         
-        self.cross_attn = nn.ModuleDict({
-            modality: CrossAttentionBlock(self.dim_model, self.heads, self.ff_dim, self.dropout)
-            for modality in self.encoders
-        })
-        
-        mixer_layer = nn.TransformerEncoderLayer(
-            d_model=self.dim_model, nhead=self.heads,
-            dim_feedforward=self.ff_dim,
-            batch_first=True, dropout=self.dropout
-        )
-        self.modality_mixer = nn.TransformerEncoder(mixer_layer, num_layers=2)
-        
+        self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
 
@@ -184,61 +168,11 @@ class SPECTRE(pl.LightningModule):
 
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
-
-    '''def forward(self, batch, batch_idx=None, return_representations=False):
-        # assume `batch` is a dict: {"hsqc": x_hsqc, "hnmr": x_hnmr, …, "mw": mw}
-        B = next(iter(batch.values())).size(0)
-        modal_outputs = []
-
-        for m, x in batch.items():
-            if m == "mw":
-                continue
-
-            # x: (B, L, D_in)
-            B, L, D_in = x.shape
-            mask = (x.abs().sum(-1) == 0)  # (B, L)
-
-            x_flat = x.reshape(B * L, D_in)                           # (B*L, D_in)
-            points_flat = self.encoders[m](x_flat)                    # (B*L, D_model)
-            assert torch.isfinite(points_flat).all()
-            points = points_flat.reshape(B, L, self.dim_model)        # (B, L, D_model)
-            assert torch.isfinite(points).all()
-
-            # now you can self-attend & cross-attend as before
-            points = self.self_attn[m](points, src_key_padding_mask=mask)
-            
-            cls_m  = self.modal_cls[m].expand(B, 1, -1)
-            cls_m  = self.cross_attn[m](cls_m, points, points, key_padding_mask=mask)
-            assert torch.isfinite(cls_m).all()
-
-            modal_outputs.append(cls_m)
-
-        # stack into (B, M, D) and mix
-        stacked = torch.cat(modal_outputs, dim=1)
-        assert torch.isfinite(stacked).all()
-        mixed = self.modality_mixer(stacked)  # (B, M, D)
-        assert torch.isfinite(mixed).all()
-
-        # pick the first CLS slot as your global embedding
-        # (that’s the one you cross-attended into)
-        cls_rep = mixed[:, 0, :]                # (B, D)
-        assert torch.isfinite(cls_rep).all()
-
-        # embed mw scalar, squeeze to match (B, D), and combine
-        mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1))  
-        assert torch.isfinite(mw_feat).all()
-        mw_feat = mw_feat.squeeze(-1)           # (B, D)
-        final = cls_rep + mw_feat             # (B, D)
-        assert torch.isfinite(final).all()
-
-        # project to fingerprint logits
-        out = self.fc(final)                    # (B, out_dim)
-        return out'''
         
     def forward(self, batch, batch_idx=None, return_representations=False):
-        # assume `batch` is a dict: {"hsqc": x_hsqc, "hnmr": x_hnmr, …, "mw": mw}
         B = next(iter(batch.values())).size(0)
-        modal_outputs = []
+        all_points = []
+        all_masks = []
 
         for m, x in batch.items():
             if m == "mw":
@@ -246,50 +180,45 @@ class SPECTRE(pl.LightningModule):
 
             # x: (B, L, D_in)
             B, L, D_in = x.shape
-            mask = (x.abs().sum(-1) == 0)  # True for padded / dropped rows, shape (B, L)
+            mask = (x.abs().sum(-1) == 0)  # (B, L), True for padding
 
-            # encode coords → (B, L, D_model)
-            x_flat     = x.view(B * L, D_in)
-            pts_flat   = self.encoders[m](x_flat)
-            points     = pts_flat.view(B, L, self.dim_model)
-            # self-attend
-            points = self.self_attn[m](points, src_key_padding_mask=mask)
+            # 1. Encode and reshape
+            x_flat   = x.view(B * L, D_in)
+            enc_flat = self.encoders[m](x_flat)
+            enc_seq  = enc_flat.view(B, L, self.dim_model)  # (B, L, D)
 
-            # prepare per-sample CLS
-            cls_m = self.modal_cls[m].expand(B, 1, -1).clone()  # (B,1,D_model)
+            # 2. Self-attention per modality
+            attended = self.self_attn[m](enc_seq, src_key_padding_mask=mask)
 
-            # figure out which samples actually have any real tokens
-            nonempty = ~mask.all(dim=1)                         # (B,) bool
+            # 3. Accumulate
+            all_points.append(attended)
+            all_masks.append(mask)
 
-            if nonempty.any():
-                # gather only non-empty
-                pts_ne  = points[nonempty]      # (N_kept, L, D_model)
-                cls_ne  = cls_m[nonempty]       # (N_kept, 1, D_model)
-                mask_ne = mask[nonempty]        # (N_kept, L)
-                # cross-attend for those
-                out_ne  = self.cross_attn[m](
-                    query=cls_ne,
-                    key=pts_ne,
-                    value=pts_ne,
-                    key_padding_mask=mask_ne
-                )
-                # scatter back
-                cls_m[nonempty] = out_ne
+        # 4. Add molecular weight as a 1-point modality
+        if "mw" in batch:
+            mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)  # (B, 1, D)
+            all_points.append(mw_feat)
+            all_masks.append(torch.zeros(B, 1, dtype=torch.bool, device=mw_feat.device))
 
-            # fully-empty samples keep their initial cls_m
-            modal_outputs.append(cls_m)
+        # 5. Concatenate all modality outputs and masks
+        joint_seq = torch.cat(all_points, dim=1)  # (B, N_total+1, D)
+        joint_mask = torch.cat(all_masks, dim=1)  # (B, N_total+1)
 
-        # stack into (B, M, D) and mix
-        stacked = torch.cat(modal_outputs, dim=1)  # M = number of non‐mw modalities
-        mixed   = self.modality_mixer(stacked)     # (B, M, D_model)
-        cls_rep = mixed[:, 0, :]                   # (B, D_model)
-        mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).squeeze(-1)  # (B, D_model)
-        final   = cls_rep + mw_feat               # (B, D_model)
+        # 6. Cross-attend from global CLS token
+        global_token = self.global_cls.expand(B, 1, -1)  # (B, 1, D)
+        for block in self.cross_blocks:
+            global_token = block(
+                query=global_token,
+                key=joint_seq,
+                value=joint_seq,
+                key_padding_mask=joint_mask
+            )
 
-        # project to fingerprint logits
-        out = self.fc(final)                       # (B, out_dim)
+        # 7. Final projection
+        out = self.fc(global_token.squeeze(1))  # (B, out_dim)
+
         if return_representations:
-            return final.detach().cpu().numpy()
+            return global_token.squeeze(1).detach().cpu().numpy()
         return out
 
     def training_step(self, batch, batch_idx):
@@ -355,13 +284,6 @@ class SPECTRE(pl.LightningModule):
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         raise NotImplementedError()
-        x, smiles_chemical_name = batch
-        if return_representations:
-            return self.forward(x, return_representations=True)
-        out = self.forward(x)
-        preds = torch.sigmoid(out)
-        top_k_idxs = self.ranker.retrieve_idx(preds)
-        return top_k_idxs
         
     def on_train_epoch_end(self):
         if self.training_step_outputs:

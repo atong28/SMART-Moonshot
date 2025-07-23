@@ -45,6 +45,7 @@ DEBUG_LEN = 3000
 
 DROP_MW_PERCENTAGE = 0.5
 DROP_MS_PERCENTAGE = 0.5
+DROP_ID_PERCENTAGE = 0.5
 
 HSQC_TYPE = 0
 C_NMR_TYPE = 1
@@ -53,7 +54,7 @@ MW_TYPE = 3
 ID_TYPE = 4
 MS_TYPE = 5
 
-INPUTS_CANONICAL_ORDER = ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
+INPUTS_CANONICAL_ORDER = ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'iso_dist', 'mw']
 
 def normalize_hsqc(hsqc):
     """
@@ -114,15 +115,7 @@ class MoonshotDataset(Dataset):
 
             with open(os.path.join(self.root, 'index.pkl'), 'rb') as f:
                 data = pickle.load(f)
-            data = {
-                idx: entry for idx, entry in data.items()
-                if entry['split'] == self.split and
-                any(
-                    entry[f'has_{input_type}']
-                    for input_type in self.input_types
-                    if input_type != 'mw'
-                )
-            }
+            data = {idx: entry for idx, entry in data.items() if entry['split'] == self.split}
             data_len = len(data)
             logger.info(f'[MoonshotDataset] Requiring the following items to be present: {self.requires}')
             data = {idx: entry for idx, entry in data.items() if all(entry[f'has_{dtype}'] for dtype in self.requires)}
@@ -150,14 +143,6 @@ class MoonshotDataset(Dataset):
     def __getitem__(self, idx):
         data_idx, data_obj = self.data[idx]
         filename = f'{data_idx}.pt'
-        available_types = {
-            'hsqc': data_obj['has_hsqc'],
-            'c_nmr': data_obj['has_c_nmr'],
-            'h_nmr': data_obj['has_h_nmr'],
-            'mass_spec': data_obj['has_mass_spec']
-        }
-        available_types = [k for k, v in available_types.items() if k in self.input_types and v]
-        always_keep = random.choice(available_types)
         data_inputs = {}
         if 'hsqc' in self.input_types and data_obj['has_hsqc']:
             hsqc = torch.load(os.path.join(self.root, 'HSQC_NMR', filename), weights_only=True).float()
@@ -174,7 +159,8 @@ class MoonshotDataset(Dataset):
             c_nmr = F.pad(c_nmr, (0,2), "constant", 0) # -> (N,3)
             if self.jittering > 0 and self.split == 'train':
                 c_nmr = c_nmr + torch.randn_like(c_nmr) * self.jittering
-            data_inputs['c_nmr'] = c_nmr
+            if c_nmr.numel() > 0:
+                data_inputs['c_nmr'] = c_nmr
             
         if 'h_nmr' in self.input_types and data_obj['has_h_nmr']:
             h_nmr = torch.load(os.path.join(self.root, 'H_NMR', filename), weights_only=True).float()
@@ -182,25 +168,22 @@ class MoonshotDataset(Dataset):
             h_nmr = F.pad(h_nmr, (1,1), "constant", 0)  # -> (N,3)
             if self.jittering > 0 and self.split == 'train':
                 h_nmr = h_nmr + torch.randn_like(h_nmr) * self.jittering * 0.1
-            data_inputs['h_nmr'] = h_nmr
+            if h_nmr.numel() > 0:
+                data_inputs['h_nmr'] = h_nmr
         
-        # optional drop of one NMR branch only if HSQC is present already
+        # optional drop of one NMR branch
         if ('c_nmr' in self.input_types and 'c_nmr' not in self.requires and
             'h_nmr' in self.input_types and 'h_nmr' not in self.requires):
             r = random.random()
-            if r <= 0.3984 and 'c_nmr' != always_keep:
+            if r <= 0.3984:
                 # drop C-NMR
                 data_inputs.pop('c_nmr', None)
-            elif r <= 0.3984 + 0.2032 and 'h_nmr' != always_keep:
+            elif r <= 0.3984 + 0.2032:
                 # drop H-NMR
                 data_inputs.pop('h_nmr', None)
 
         if 'mass_spec' in self.input_types and data_obj['has_mass_spec']:
-            if (
-                'mass_spec' in self.requires 
-                or 'mass_spec' == always_keep 
-                or ('mass_spec' not in self.requires and random.random() >= DROP_MS_PERCENTAGE)
-            ):
+            if 'mass_spec' in self.requires or ('mass_spec' not in self.requires and random.random() >= DROP_MS_PERCENTAGE):
                 ms = torch.load(os.path.join(self.root, 'MassSpec', filename), weights_only=True).float()
                 ms = F.pad(ms, (0,1), "constant", 0)
                 if self.jittering > 0 and self.split == 'train':
@@ -209,7 +192,13 @@ class MoonshotDataset(Dataset):
                     noise[:, 1] = torch.randn_like(ms[:, 1]) * ms[:, 1] / 10
                     ms = ms + noise
                 data_inputs['mass_spec'] = ms
-        assert len(data_inputs) != 0, f'Always keep was {always_keep} and data has input types {[data_obj[f"has_{input_type}"] for input_type in self.input_types if input_type != "mw"]} and data inputs is {data_inputs}'
+
+        if 'iso_dist' in self.input_types and data_obj['has_iso_dist']:
+            if 'iso_dist' in self.requires or ('iso_dist' not in self.requires and random.random() >= DROP_ID_PERCENTAGE):
+                iso_dist = torch.load(os.path.join(self.root, 'IsoDist', filename), weights_only=True).float()
+                iso_dist = F.pad(iso_dist, (0,1), "constant", 0)
+                data_inputs['iso_dist'] = iso_dist
+            # TODO: should we jitter?
 
         if 'mw' in self.input_types and data_obj['has_mw']:
             if 'mw' in self.requires or ('mw' not in self.requires and random.random() >= DROP_MW_PERCENTAGE):
@@ -265,9 +254,13 @@ def collate(batch):
     batch_fps = torch.stack(fps, dim=0)
     return batch_inputs, batch_fps
 
+
+
 class MoonshotDataModule(pl.LightningDataModule):
     def __init__(self, args: Args, results_path: str, fp_loader: EntropyFPLoader):
         super().__init__()
+        if len(args.requires) == 0 or (len(args.requires) == 1 and args.requires[0] == 'mw'):
+            raise ValueError('You must require at least one datatype, and it cannot be molecular weight!')
         self.args = args
         self.batch_size = self.args.batch_size
         self.num_workers = self.args.num_workers

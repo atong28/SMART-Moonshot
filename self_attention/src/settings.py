@@ -68,3 +68,5 @@ class Args:
     # testing args
     rank_by_soft_output: bool = True
     rank_by_test_set: bool = False
+
+    visualize: bool = False

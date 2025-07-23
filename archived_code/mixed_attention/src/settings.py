@@ -14,18 +14,18 @@ class Args:
     train: bool = True
     test: bool = True
     
-    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
-        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
+    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']] = field(
+        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']
     )
-    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(default_factory=lambda: [])
+    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'iso_dist']] = field(default_factory=lambda: ['hsqc'])
     
     debug: bool = False
     fp_type: Literal['Entropy', 'HYUN', 'Normal'] = 'Entropy'
     fp_radius: Optional[int] = 6
     batch_size: int = 32
     num_workers: int = 8
-    epochs: int = 500
-    patience: int = 10
+    epochs: int = 1000
+    patience: int = 20
     persistent_workers: bool = True
     validate_all: bool = False
     use_cached_datasets: bool = False
@@ -36,11 +36,11 @@ class Args:
     # model args
     dim_model: int = 784
     nmr_dim_coords: List[int] = field(default_factory=lambda: [365, 365, 54])
-    ms_dim_coords: List[int] = field(default_factory=lambda: [392, 392, 0])
+    ms_id_dim_coords: List[int] = field(default_factory=lambda: [392, 392, 0])
     mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
     heads: int = 8
     layers: int = 16
-    self_attn_layers: int = 2
+    self_attn_layers: Dict[str, int] = field(default_factory=lambda: {'hsqc': 3, 'h_nmr': 2, 'c_nmr': 2, 'mass_spec': 3, 'iso_dist': 2, 'mw': 0})
     ff_dim: int = 3072
     out_dim: int = 16384
     accumulate_grad_batches_num: int = 4
@@ -70,4 +70,4 @@ class Args:
     rank_by_soft_output: bool = True
     rank_by_test_set: bool = False
 
-    visualize: bool = False
+    develop: bool = False

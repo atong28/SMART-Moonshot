@@ -22,13 +22,17 @@ if dist.is_initialized():
 logger_should_sync_dist = torch.cuda.device_count() > 1
 
 class CrossAttentionBlock(nn.Module):
+    """
+    Single cross‑attention + feed‑forward block.
+    Query attends to Key/Value (the spectral peaks).
+    """
     def __init__(self, dim_model, num_heads, ff_dim, dropout=0.1):
         super().__init__()
         self.attn = nn.MultiheadAttention(
             embed_dim=dim_model, 
             num_heads=num_heads, 
             dropout=dropout,
-            batch_first=True
+            batch_first=True    # so inputs are (B, L, D)
         )
         self.norm1 = nn.LayerNorm(dim_model)
         self.ff = nn.Sequential(
@@ -39,21 +43,19 @@ class CrossAttentionBlock(nn.Module):
         )
         self.norm2 = nn.LayerNorm(dim_model)
 
-    def forward(self, query, key, value, key_padding_mask=None, return_attn_weights=False):
-        attn_out, attn_weights = self.attn(
+    def forward(self, query, key, value, key_padding_mask=None):
+        # query: (B, Q, D); key/value: (B, S, D)
+        attn_out, _ = self.attn(
             query=query, 
             key=key, 
             value=value, 
-            key_padding_mask=key_padding_mask,
-            need_weights=return_attn_weights,
-            average_attn_weights=False  # if you want separate weights per head
+            key_padding_mask=key_padding_mask
         )
+        # residual + norm
         q1 = self.norm1(query + attn_out)
+        # feed‑forward + norm
         ff_out = self.ff(q1)
         out  = self.norm2(q1 + ff_out)
-
-        if return_attn_weights:
-            return out, attn_weights
         return out
 
 class SPECTRE(pl.LightningModule):
@@ -114,15 +116,51 @@ class SPECTRE(pl.LightningModule):
             [args.id_wavelength_bounds, args.abundance_wavelength_bounds],
             args.use_peak_values
         )
-        self.enc_mw = build_encoder(
-            args.dim_model,
-            args.mw_dim_coords,
-            [args.mw_wavelength_bounds],
-            args.use_peak_values
+
+        # 1) coordinate encoders
+        self.encoders = {
+            "hsqc": self.enc_nmr,
+            "h_nmr": self.enc_nmr,
+            "c_nmr": self.enc_nmr,
+            "mass_spec": self.enc_ms,
+            "iso_dist": self.enc_id,
+        }
+        self.encoders = nn.ModuleDict({k: v for k, v in self.encoders.items() if k in self.args.input_types})
+        
+        self.self_attn = nn.ModuleDict({
+            modality: nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(
+                    d_model=self.dim_model, nhead=self.heads,
+                    dim_feedforward=self.ff_dim,
+                    batch_first=True, dropout=self.dropout
+                ), 
+                num_layers= args.self_attn_layers[modality]
+            )
+            for modality in self.encoders
+        })
+        
+        self.modal_cls = nn.ParameterDict()
+        for modality in self.encoders:
+            p = nn.Parameter(torch.empty(1,1,self.dim_model))
+            nn.init.xavier_uniform_(p)   # or nn.init.zeros_(p)
+            self.modal_cls[modality] = p
+        for name, p in self.modal_cls.items():
+            assert torch.isfinite(p).all(), f"{name} initialized to NaN!"
+        
+        self.cross_attn = nn.ModuleDict({
+            modality: CrossAttentionBlock(self.dim_model, self.heads, self.ff_dim, self.dropout)
+            for modality in self.encoders
+        })
+        
+        mixer_layer = nn.TransformerEncoderLayer(
+            d_model=self.dim_model, nhead=self.heads,
+            dim_feedforward=self.ff_dim,
+            batch_first=True, dropout=self.dropout
         )
-        self.encoder_list = [self.enc_nmr, self.enc_nmr, self.enc_nmr, self.enc_mw, self.enc_id, self.enc_ms]
-        if self.global_rank == 0:
-            logger.info(f"[SPECTRE] Using {str(self.enc_nmr.__class__)}")
+        self.modality_mixer = nn.TransformerEncoder(mixer_layer, num_layers=2)
+        
+        self.mw_embed = nn.Linear(1, self.dim_model)
+        self.fc = nn.Linear(self.dim_model, self.out_dim)
 
         self.bce_pos_weight = None
         logger.info("[SPECTRE] bce_pos_weight = None")
@@ -134,178 +172,189 @@ class SPECTRE(pl.LightningModule):
         self.validation_step_outputs = []
         self.training_step_outputs = []
         self.test_step_outputs = []
-
-        self.embedding = nn.Embedding(6, self.dim_model)
-        self.fc = nn.Linear(self.dim_model, self.out_dim)
-        self.latent = torch.nn.Parameter(torch.randn(1, 1, self.dim_model))
-
-        self.cross_blocks = nn.ModuleList([
-            CrossAttentionBlock(
-                dim_model=self.dim_model,
-                num_heads=self.heads,
-                ff_dim=self.ff_dim,
-                dropout=self.dropout
-            )
-            for _ in range(self.layers)
-        ])
         
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
+        
         if self.l1_decay > 0:
-            self.cross_blocks = L1(self.cross_blocks, self.l1_decay)
-            self.fc = L1(self.fc, self.l1_decay)
+            self.cross_attn = L1(self.cross_attn, self.l1_decay)
+            self.self_attn  = L1(self.self_attn,  self.l1_decay)
+            self.fc         = L1(self.fc,         self.l1_decay)
 
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
 
-    def encode(self, x, type_indicator, mask=None):
-        """
-        x: Tensor of shape (B, N, D)
-        type_indicator: Tensor of shape (B, N) — per peak
-        Returns:
-            - out: (B, N+1, dim_model)
-            - mask: (B, N+1)
-        """
-        B, N, D = x.shape
-        device = x.device
-        dim_model = self.latent.shape[-1]
+    '''def forward(self, batch, batch_idx=None, return_representations=False):
+        # assume `batch` is a dict: {"hsqc": x_hsqc, "hnmr": x_hnmr, …, "mw": mw}
+        B = next(iter(batch.values())).size(0)
+        modal_outputs = []
 
-        if mask is None:
-            zeros = ~x.sum(dim=2).bool()  # (B, N)
-            prefix_mask = torch.zeros((B, 1), dtype=torch.bool, device=device)
-            mask = torch.cat([prefix_mask, zeros], dim=1)  # (B, N+1)
-        x_flat = x.reshape(B * N, D)
-        type_flat = type_indicator.reshape(B * N)
-        points_flat = torch.zeros((B * N, dim_model), device=device)
+        for m, x in batch.items():
+            if m == "mw":
+                continue
 
-        for type_val, encoder in enumerate(self.encoder_list):
-            idx = type_flat == type_val  # (B*N,)
-            if idx.any():
-                points_flat[idx] = encoder(x_flat[idx])
-        points = points_flat.reshape(B, N, dim_model)
-        type_embed = self.embedding(type_indicator)
-        points = points + type_embed               # (B, N, D)
-        latent = self.latent.expand(B, 1, -1)      # (B, 1, D)
+            # x: (B, L, D_in)
+            B, L, D_in = x.shape
+            mask = (x.abs().sum(-1) == 0)  # (B, L)
 
-        # Now run L cross‑attention blocks:
-        for block in self.cross_blocks:
-            # mask[:,1:] masks the padded peaks
-            latent = block(
-                query=latent, 
-                key=points, 
-                value=points, 
-                key_padding_mask=mask[:,1:]
-            )
-        return latent, mask
+            x_flat = x.reshape(B * L, D_in)                           # (B*L, D_in)
+            points_flat = self.encoders[m](x_flat)                    # (B*L, D_model)
+            assert torch.isfinite(points_flat).all()
+            points = points_flat.reshape(B, L, self.dim_model)        # (B, L, D_model)
+            assert torch.isfinite(points).all()
 
-    def forward(self, hsqc, type_indicator, return_representations=False):
-        """The forward pass.
-        Parameters
-        ----------
-        hsqc: torch.Tensor of shape (batch_size, n_points, 3)
-            The hsqc to embed. Axis 0 represents an hsqc, axis 1
-            contains the coordinates in the hsqc, and axis 2 is essentially is
-            a 3-tuple specifying the coordinate's x, y, and z value. These
-            should be zero-padded, such that all of the hsqc in the batch
-            are the same length.
-        """
-        latent, _ = self.encode(hsqc, type_indicator)
-        # latent is (B, 1, D): grab that token
-        out_cls = self.fc(latent.squeeze(1))
+            # now you can self-attend & cross-attend as before
+            points = self.self_attn[m](points, src_key_padding_mask=mask)
+            
+            cls_m  = self.modal_cls[m].expand(B, 1, -1)
+            cls_m  = self.cross_attn[m](cls_m, points, points, key_padding_mask=mask)
+            assert torch.isfinite(cls_m).all()
+
+            modal_outputs.append(cls_m)
+
+        # stack into (B, M, D) and mix
+        stacked = torch.cat(modal_outputs, dim=1)
+        assert torch.isfinite(stacked).all()
+        mixed = self.modality_mixer(stacked)  # (B, M, D)
+        assert torch.isfinite(mixed).all()
+
+        # pick the first CLS slot as your global embedding
+        # (that’s the one you cross-attended into)
+        cls_rep = mixed[:, 0, :]                # (B, D)
+        assert torch.isfinite(cls_rep).all()
+
+        # embed mw scalar, squeeze to match (B, D), and combine
+        mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1))  
+        assert torch.isfinite(mw_feat).all()
+        mw_feat = mw_feat.squeeze(-1)           # (B, D)
+        final = cls_rep + mw_feat             # (B, D)
+        assert torch.isfinite(final).all()
+
+        # project to fingerprint logits
+        out = self.fc(final)                    # (B, out_dim)
+        return out'''
+        
+    def forward(self, batch, batch_idx=None, return_representations=False):
+        # assume `batch` is a dict: {"hsqc": x_hsqc, "hnmr": x_hnmr, …, "mw": mw}
+        B = next(iter(batch.values())).size(0)
+        modal_outputs = []
+
+        for m, x in batch.items():
+            if m == "mw":
+                continue
+
+            # x: (B, L, D_in)
+            B, L, D_in = x.shape
+            mask = (x.abs().sum(-1) == 0)  # True for padded / dropped rows, shape (B, L)
+
+            # encode coords → (B, L, D_model)
+            x_flat     = x.view(B * L, D_in)
+            pts_flat   = self.encoders[m](x_flat)
+            points     = pts_flat.view(B, L, self.dim_model)
+            # self-attend
+            points = self.self_attn[m](points, src_key_padding_mask=mask)
+
+            # prepare per-sample CLS
+            cls_m = self.modal_cls[m].expand(B, 1, -1).clone()  # (B,1,D_model)
+
+            # figure out which samples actually have any real tokens
+            nonempty = ~mask.all(dim=1)                         # (B,) bool
+
+            if nonempty.any():
+                # gather only non-empty
+                pts_ne  = points[nonempty]      # (N_kept, L, D_model)
+                cls_ne  = cls_m[nonempty]       # (N_kept, 1, D_model)
+                mask_ne = mask[nonempty]        # (N_kept, L)
+                # cross-attend for those
+                out_ne  = self.cross_attn[m](
+                    query=cls_ne,
+                    key=pts_ne,
+                    value=pts_ne,
+                    key_padding_mask=mask_ne
+                )
+                # scatter back
+                cls_m[nonempty] = out_ne
+
+            # fully-empty samples keep their initial cls_m
+            modal_outputs.append(cls_m)
+
+        # stack into (B, M, D) and mix
+        stacked = torch.cat(modal_outputs, dim=1)  # M = number of non‐mw modalities
+        mixed   = self.modality_mixer(stacked)     # (B, M, D_model)
+        cls_rep = mixed[:, 0, :]                   # (B, D_model)
+        mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).squeeze(-1)  # (B, D_model)
+        final   = cls_rep + mw_feat               # (B, D_model)
+
+        # project to fingerprint logits
+        out = self.fc(final)                       # (B, out_dim)
         if return_representations:
-            return latent.squeeze(1).detach().cpu().numpy()
-        return out_cls
-    
-    def forward_with_attention(self, x, type_indicator):
-        """
-        Returns the attention weights from each CrossAttentionBlock.
-        """
-        B, N, D = x.shape
-        device = x.device
-        dim_model = self.latent.shape[-1]
-
-        zeros = ~x.sum(dim=2).bool()  # (B, N)
-        prefix_mask = torch.zeros((B, 1), dtype=torch.bool, device=device)
-        mask = torch.cat([prefix_mask, zeros], dim=1)  # (B, N+1)
-
-        x_flat = x.reshape(B * N, D)
-        type_flat = type_indicator.reshape(B * N)
-        points_flat = torch.zeros((B * N, dim_model), device=device)
-
-        for type_val, encoder in enumerate(self.encoder_list):
-            idx = type_flat == type_val
-            if idx.any():
-                points_flat[idx] = encoder(x_flat[idx])
-        points = points_flat.reshape(B, N, dim_model)
-        type_embed = self.embedding(type_indicator)
-        points = points + type_embed
-        latent = self.latent.expand(B, 1, -1)
-
-        attention_weights = []
-
-        for block in self.cross_blocks:
-            latent, attn_weights = block(
-                query=latent,
-                key=points,
-                value=points,
-                key_padding_mask=mask[:, 1:],
-                return_attn_weights=True
-            )
-            attention_weights.append(attn_weights.detach().cpu())  # shape: (B, num_heads, 1, N)
-
-        return attention_weights, mask[:, 1:].cpu(), type_indicator.cpu()
-
+            return final.detach().cpu().numpy()
+        return out
 
     def training_step(self, batch, batch_idx):
-        
-        inputs, labels, NMR_type_indicator = batch
-        out = self.forward(inputs, NMR_type_indicator)
-        loss = self.loss(out, labels)
+        batch_inputs, fps = batch
+        logits = self.forward(batch_inputs)
+        loss = self.loss(logits, fps)
+        if self.global_rank == 0 and torch.isnan(loss):
+            if torch.isnan(loss):
+                print("Sample logits:", logits[0,:10])
+                print("Sample labels:", fps[0,:10])
+            assert torch.isfinite(logits).all(), "Found non-finite logits"
+            assert torch.isfinite(fps).all(),    "Found non-finite labels"
         
         self.log("tr/loss", loss, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
-        inputs, labels, NMR_type_indicator = batch
-        out = self.forward(inputs, NMR_type_indicator)
-        loss = self.loss(out, labels)
+        batch_inputs, fps = batch
+        logits = self.forward(batch_inputs)
+        loss = self.loss(logits, fps)
         metrics, _ = self.compute_metric_func(
-            out, labels, self.ranker, loss, self.loss, thresh=0.0, 
+            logits, fps, self.ranker, loss, self.loss, thresh=0.0, 
             rank_by_soft_output=self.rank_by_soft_output,
             query_idx_in_rankingset=batch_idx,
             use_jaccard = self.use_jaccard,
             no_ranking = True
             )
-        
         if type(self.validation_step_outputs) == list: # adapt for child class: optional_input_ranked_transformer
             self.validation_step_outputs.append(metrics)
         return metrics
     
     def test_step(self, batch, batch_idx):
-        inputs, labels, NMR_type_indicator = batch
-        out = self.forward(inputs, NMR_type_indicator)
-        loss = self.loss(out, labels)
-        
+        # 1) unpack
+        batch_inputs, fps = batch
+
+        # 2) forward + loss
+        logits = self.forward(batch_inputs)
+        loss = self.loss(logits, fps)
+
+        # 3) extract per-sample MW values from batch_inputs["mw"]
         mw_list = None
-        if 'mw' in self.args.input_types:
-            mw_list = []
-            for x, t in zip(inputs, NMR_type_indicator):
-                mw_values = x[t == 3]  # MW_TYPE = 3
-                mw_list.append(mw_values[0, 0].item() if len(mw_values) > 0 else None)
-        
+        if "mw" in batch_inputs:
+            # now batch_inputs["mw"] is a (B,) tensor of floats
+            mw_list = batch_inputs["mw"].tolist()
+
+        # 4) metrics + ranking
         metrics, rank_res = self.compute_metric_func(
-            out, labels, self.ranker, loss, self.loss, thresh=0.0,
+            logits, fps, self.ranker, loss, self.loss,
+            thresh=0.0,
             rank_by_soft_output=self.rank_by_soft_output,
             query_idx_in_rankingset=batch_idx,
-            use_jaccard = self.use_jaccard,
+            use_jaccard=self.use_jaccard,
         )
         ranks = rank_res.cpu().tolist()
-        if type(self.test_step_outputs)==list:
+
+        # 5) record for on_test_epoch_end
+        if isinstance(self.test_step_outputs, list):
             self.test_step_outputs.append(metrics)
+
+        # 6) return exactly the same tuple you expect downstream
         return metrics, mw_list, ranks
 
+
     def predict_step(self, batch, batch_idx, return_representations=False):
+        raise NotImplementedError()
         x, smiles_chemical_name = batch
         if return_representations:
             return self.forward(x, return_representations=True)
