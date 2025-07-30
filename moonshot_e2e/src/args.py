@@ -38,6 +38,7 @@ def parse_args(argv):
     add_bool_flag(parser, 'rank_by_test_set', False)
     add_bool_flag(parser, 'train', True)
     add_bool_flag(parser, 'test', True)
+    add_bool_flag(parser, 'visualize', False)
 
     parser.add_argument('--model_mode', choices=['mixed_attention', 'moonshot_e2e'], required=True)
     parser.add_argument('--fp_type', choices=['Entropy', 'HYUN', 'Normal'])
@@ -66,17 +67,16 @@ def parse_args(argv):
     parser.add_argument('--scheduler', choices=['attention'])
     parser.add_argument('--warm_up_steps', type=int)
     
-    parser.add_argument('--node_feat_dim', type=int)
-    parser.add_argument('--edge_attr_dim', type=int)
-    parser.add_argument('--timesteps', type=int)
-    parser.add_argument('--beta_start', type=float)
-    parser.add_argument('--beta_end', type=float)
-    parser.add_argument('--diff_hidden', type=int)
-    parser.add_argument('--diff_heads', type=int)
-    parser.add_argument('--diff_layers', type=int)
+    parser.add_argument('--spectre_ckpt', help="Path to pretrained SPECTRE .ckpt for diffusion backbone")
+    parser.add_argument('--timesteps', type=int, help="number of diffusion steps")
+    parser.add_argument('--beta_start', type=float, help="starting beta for schedule")
+    parser.add_argument('--beta_end', type=float, help="ending beta for schedule")
+    parser.add_argument('--node_feat_dim', type=int, help="dimensionality of raw node features")
+    parser.add_argument('--edge_attr_dim', type=int, help="dimensionality of raw edge features")
+    parser.add_argument('--diff_hidden', type=int, help="hidden size in GraphDenoiser")
+    parser.add_argument('--diff_heads', type=int, help="num heads in GraphDenoiser GAT layers")
+    parser.add_argument('--diff_layers', type=int, help="num GATConv layers in GraphDenoiser")
     
-    add_bool_flag(parser, 'visualize', False)
-
     args = parser.parse_args()
     model_mode = args.model_mode
     delattr(args, 'model_mode')

@@ -1,57 +1,45 @@
 import os
 import pickle
-import logging
 
+import wandb
 import pytorch_lightning as pl
+import pytorch_lightning.callbacks as cb
 from pytorch_lightning.loggers import WandbLogger
 
 from .src.settings import Args
-from .src.model import Moonshot
+from .src.model import MoonshotDiffusion
 from .src.dataset import MoonshotDataModule
-
-logger = logging.getLogger("lightning")
 
 def test(
     args: Args,
+    data_module: MoonshotDataModule,
+    model: MoonshotDiffusion,
     results_path: str,
-    model: Moonshot,
     ckpt_path: str | None = None,
-    wandb_run=None
+    wandb_run = None
 ):
-    """
-    Test the diffusion‐based Moonshot model.
-
-    - args: parsed Args object
-    - results_path: directory where checkpoints / outputs are stored
-    - model: an (uninitialized) Moonshot instance
-    - ckpt_path: optional path to a .ckpt file to load before testing
-    - wandb_run: W&B run handle (may be None)
-    """
-    # 1) Logger & Trainer
+    # initialize WandB (if provided)
     wandb_logger = WandbLogger(experiment=wandb_run)
+
+    # we don't need early stopping / checkpointing during test,
+    # but you can re-use callbacks array if you like
     trainer = pl.Trainer(
         accelerator="auto",
-        devices=1,
-        logger=wandb_logger
+        devices="auto",
+        strategy="ddp_find_unused_parameters_true",
+        logger=wandb_logger,
     )
 
-    # 2) (Re)load best checkpoint if provided
-    if ckpt_path is not None:
-        logger.info(f"[Test] Loading checkpoint from {ckpt_path}")
-        model = Moonshot.load_from_checkpoint(ckpt_path, args=args)
+    # run the test loop; this will call your model.test_step / on_test_epoch_end
+    test_results = trainer.test(
+        model,
+        datamodule=data_module,
+        ckpt_path = ckpt_path
+    )
 
-    # 3) DataModule setup
-    data_module = MoonshotDataModule(args, results_path)
-    data_module.setup(stage="test")
-
-    # 4) Run test
-    logger.info("[Test] Starting test()")
-    test_results = trainer.test(model, datamodule=data_module)
-
-    # 5) Save results
-    out_path = os.path.join(results_path, "test_results.pkl")
-    with open(out_path, "wb") as f:
+    # save raw test outputs
+    out_file = os.path.join(results_path, "test_results.pkl")
+    with open(out_file, "wb") as f:
         pickle.dump(test_results, f)
-    logger.info(f"[Test] Saved test results to {out_path}")
 
     return test_results

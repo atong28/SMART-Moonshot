@@ -9,7 +9,6 @@ import numpy as np
 from .const import ELEM2IDX
 from .settings import Args
 from .utils import L1
-from .fp_loaders.entropy import EntropyFPLoader
 from .encoder import build_encoder
 from .metrics import cm
 from .ranker import RankingSet
@@ -60,7 +59,7 @@ class CrossAttentionBlock(nn.Module):
         return out
 
 class SPECTRE(pl.LightningModule):
-    def __init__(self, args: Args, fp_loader: EntropyFPLoader):
+    def __init__(self, args: Args, fp_loader = None):
         super().__init__()
         
         self.args = args
@@ -370,7 +369,7 @@ class SPECTRE(pl.LightningModule):
         )
 
 class OptionalInputSPECTRE(SPECTRE):
-    def __init__(self, args: Args, fp_loader: EntropyFPLoader, combinations_names: list[str]):
+    def __init__(self, args: Args, combinations_names: list[str], fp_loader = None):
         super().__init__(args, fp_loader)
         self.validation_step_outputs = defaultdict(list)
         self.test_step_outputs = defaultdict(list)
@@ -442,10 +441,3 @@ class OptionalInputSPECTRE(SPECTRE):
             for k, v in di.items():
                 self.log(k, v, on_epoch=True, prog_bar="rank_1" in k)
         self.test_step_outputs.clear()
-
-def build_model(args: Args, optional_inputs: bool, fp_loader: EntropyFPLoader, combinations_names = None):
-    if optional_inputs:
-        logger.info('[SPECTRE] Using optional input ranked transformer')
-        return OptionalInputSPECTRE(args, fp_loader, combinations_names)
-    logger.info('[SPECTRE] Using fixed input ranked transformer')
-    return SPECTRE(args, fp_loader)

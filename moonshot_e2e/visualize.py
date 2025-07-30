@@ -3,6 +3,4 @@ from .src.dataset import MoonshotDataModule
 from .src.model import SPECTRE, OptionalInputSPECTRE
 
 def visualize(args: Args, data_module: MoonshotDataModule, model: SPECTRE | OptionalInputSPECTRE):
-    data_module.setup('fit')
-    batch_inputs, graph_batch = next(iter(data_module.train_dataloader()))
-    print(batch_inputs.keys(), graph_batch)
+    pass

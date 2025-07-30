@@ -73,45 +73,39 @@ def get_debug_logger():
 
     return logger
 
-def get_beta_schedule(timesteps: int,
-                      beta_start: float = 1e-4,
-                      beta_end: float   = 2e-2
-                     ) -> torch.Tensor:
+def get_beta_schedule(timesteps: int, beta_start: float, beta_end: float) -> torch.Tensor:
     """
-    Build a linear beta schedule for T diffusion steps.
-    Returns:
-      betas: Tensor of shape (T,) with values linearly spaced from beta_start → beta_end.
+    Create a linear beta schedule:
+      β₁ = beta_start, β_T = beta_end, with T total steps.
+    Returns a 1-D tensor of shape [timesteps].
     """
     return torch.linspace(beta_start, beta_end, timesteps)
 
-
-def q_sample(x0: torch.Tensor,
-             t: torch.Tensor,
-             noise: torch.Tensor,
-             alphas_cumprod: torch.Tensor,
-             batch_idx: torch.Tensor
-            ) -> torch.Tensor:
+def q_sample(
+    x0: torch.Tensor,
+    t: torch.LongTensor,
+    noise: torch.Tensor,
+    alphas_cumprod: torch.Tensor,
+    batch_idx: torch.LongTensor
+) -> torch.Tensor:
     """
-    Forward diffusion (noising) step:
-      x_t = sqrt(alpha_bar_t) * x0 + sqrt(1 - alpha_bar_t) * noise
+    Sample x_t given x0 via the forward (q) process:
+      x_t = sqrt(ᾱ_t) * x0 + sqrt(1 − ᾱ_t) * noise
+    where ᾱ_t = alphas_cumprod[t].
 
     Args:
-      x0            (N, D): clean node features
-      t             (B,) : timestep index for each graph in batch
-      noise         (N, D): Gaussian noise
-      alphas_cumprod (T, ): cumulative product of (1 - beta) over timesteps
-      batch_idx     (N, ): node→graph mapping (each value in [0..B-1])
+      x0            (N_nodes, D): clean node features
+      t      (batch_size,):       integer timesteps for each graph
+      noise   (N_nodes, D):       iid N(0,1) per node
+      alphas_cumprod (T,):        precomputed cumulative product of (1−β)
+      batch_idx (N_nodes,):       which graph each node belongs to (in [0..batch_size))
 
     Returns:
-      x_t (N, D): noised node features
+      x_t      (N_nodes, D): noisy features at step t
     """
-    # gather ᾱ_t for each graph, then expand to nodes
-    alpha_bar_t = alphas_cumprod[t]             # (B,)
-    sqrt_ab     = torch.sqrt(alpha_bar_t)[batch_idx]      # (N,)
-    sqrt_mb     = torch.sqrt(1 - alpha_bar_t)[batch_idx]  # (N,)
+    # gather ᾱ_t for each graph, then map to each node
+    alpha_bar = alphas_cumprod[t]                     # → (B,)
+    sqrt_ab   = alpha_bar.sqrt()[batch_idx]           # → (N_nodes,)
+    sqrt_1m   = (1.0 - alpha_bar).sqrt()[batch_idx]    # → (N_nodes,)
 
-    # mix x0 and noise per node
-    return (
-        sqrt_ab.unsqueeze(-1) * x0 +
-        sqrt_mb.unsqueeze(-1) * noise
-    )
+    return x0 * sqrt_ab.unsqueeze(-1) + noise * sqrt_1m.unsqueeze(-1)

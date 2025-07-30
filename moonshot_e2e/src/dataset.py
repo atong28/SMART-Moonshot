@@ -1,15 +1,21 @@
+# moonshot_e2e/src/dataset.py
+
 import os
 import pickle
 import torch
-import random
-import logging
 import traceback
 import sys
+import logging
+import random
+import re
+from itertools import islice, combinations
 
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
+from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
-from torch_geometric.data import Batch
+
+from torch_geometric.data import Batch   # **NEW**
 
 from .const import (
     DEBUG_LEN,
@@ -25,17 +31,23 @@ from .settings import Args
 
 logger = logging.getLogger("lightning")
 
+def is_main_process():
+    return int(os.environ.get("RANK", 0)) == 0
+
 def init_logger(path):
     logger = logging.getLogger("lightning")
-    rank = int(os.environ.get("RANK", 0))
-    logger.setLevel(logging.INFO if rank == 0 else logging.WARNING)
+    if is_main_process():
+        logger.setLevel(logging.INFO)
+    else:
+        logger.setLevel(logging.WARNING)
     if not logger.handlers:
         file_path = os.path.join(path, "logs.txt")
         os.makedirs(os.path.dirname(file_path), exist_ok=True)
-        with open(file_path, 'w'): pass
-        fmt = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+        with open(file_path, 'w') as fp:
+            pass
+        formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         fh = logging.FileHandler(file_path)
-        fh.setFormatter(fmt)
+        fh.setFormatter(formatter)
         logger.addHandler(fh)
         logger.addHandler(logging.StreamHandler(sys.stdout))
     return logger
@@ -56,23 +68,20 @@ def normalize_hsqc(hsqc):
     hsqc (torch.Tensor): Input tensor of shape (n, 3).
     Returns:
     torch.Tensor: Normalized hsqc of shape (n, 3).
-    """    
-    
+    """
     assert(len(hsqc.shape)==2 and hsqc.shape[1]==3)
-    '''normalize only peak intensities, and separate positive and negative peaks'''
+    # your existing normalization…
     selected_values = hsqc[hsqc[:,2] > 0, 2]
-    # do min_max normalization with in the range of 0.5 to 1.5
     if len(selected_values) > 1:
         min_pos = selected_values.min()
         max_pos = selected_values.max()
-        if min_pos == min_pos:
+        if min_pos == max_pos:
             hsqc[hsqc[:,2]>0,2] = 1
         else:
             hsqc[hsqc[:,2]>0,2] = (selected_values - min_pos) / (max_pos - min_pos) + 0.5
     elif len(selected_values) == 1:
         hsqc[hsqc[:,2]>0,2] = 1
-    
-    # do min_max normalization with in the range of -0.5 to -1.5
+
     selected_values = hsqc[hsqc[:,2] < 0, 2]
     if len(selected_values) > 1:
         min_neg = selected_values.min()
@@ -87,45 +96,60 @@ def normalize_hsqc(hsqc):
     return hsqc
 
 class MoonshotDataset(Dataset):
-    def __init__(self, args: Args, results_path: str, split: str = 'train', overrides: dict | None = None):
+    def __init__(self,
+                 args: Args,
+                 results_path: str,
+                 fp_loader = None,  # kept for signature compatibility
+                 split: str = 'train',
+                 overrides: dict | None = None):
+        '''
+        Assertions:
+        c_nmr and h_nmr are either both present in input_types or both not present.
+        '''
         try:
-            self.args = args if overrides is None else Args(**{**vars(args), **overrides})
-            init_logger(results_path).info(f'[MoonshotDataset] Initializing {split} split')
-            self.root = self.args.data_root
+            logger = init_logger(results_path)
+            if overrides is not None:
+                args = Args(**{**vars(args), **overrides})
+            logger.info(f'[MoonshotDataset] Initializing {split} dataset '
+                        f'with input types {args.input_types} and requires {args.requires}')
+            self.root = args.data_root
             self.split = split
-            self.input_types = self.args.input_types
-            self.requires = self.args.requires
-            self.debug = self.args.debug
-            self.jittering = self.args.jittering
-            self.use_peak_values = self.args.use_peak_values
-            self.elem2idx = ELEM2IDX
-            self.unk_idx = UNK_IDX
+            self.input_types = args.input_types
+            self.requires    = args.requires
+            self.debug       = args.debug
 
+            # load index; **must** already have `entry["graph"] = Data(...)`
             with open(os.path.join(self.root, 'index.pkl'), 'rb') as f:
                 raw = pickle.load(f)
-            # filter by split
-            entries = {idx: e for idx, e in raw.items() if e.get('split') == split}
-            # filter out entries missing required types
-            filtered = {}
-            for idx, e in entries.items():
-                ok = True
+
+            # filter by split and required modalities
+            data = {
+                idx: e for idx,e in raw.items()
+                if e.get('split') == split
+            }
+            def has_all(e):
                 for dt in self.requires:
-                    if dt in ('mw', 'formula'):
-                        if e.get(dt) is None:
-                            ok = False; break
+                    if dt in ('mw','formula'):
+                        if e.get(dt) is None: return False
                     else:
-                        if not e.get(f'has_{dt}', False):
-                            ok = False; break
-                if ok:
-                    e['idx'] = idx
-                    filtered[idx] = e
-            entries = filtered
-            if self.debug and len(entries) > DEBUG_LEN:
-                entries = dict(list(entries.items())[:DEBUG_LEN])
-            if not entries:
-                raise RuntimeError(f'No data for split={split}')
-            self.entries = list(entries.values())
-            init_logger(results_path).info(f'[MoonshotDataset] {len(self.entries)} items loaded')
+                        if not e.get(f'has_{dt}', False): return False
+                return True
+            data = {i:e for i,e in data.items() if has_all(e)}
+
+            if self.debug and len(data) > DEBUG_LEN:
+                data = dict(islice(data.items(), DEBUG_LEN))
+
+            if not data:
+                raise RuntimeError(f'[MoonshotDataset] No data for split={split}')
+
+            self.entries = list(data.items())
+            self.jittering      = args.jittering
+            self.use_peak_values= args.use_peak_values
+            self.elem2idx       = ELEM2IDX
+            self.unk_idx        = UNK_IDX
+
+            logger.info('[MoonshotDataset] Setup complete!')
+
         except Exception:
             logger.error(traceback.format_exc())
             sys.exit(1)
@@ -133,152 +157,241 @@ class MoonshotDataset(Dataset):
     def __len__(self):
         return len(self.entries)
 
-    def __getitem__(self, i):
-        e = self.entries[i]
+    def __getitem__(self, idx):
+        data_idx, e = self.entries[idx]
+        filename = f'{data_idx}.pt'
         data_inputs = {}
-        filename = f"{e['idx']}.pt"
 
-        # determine always_keep for dropping
-        available = [t for t in ('hsqc','c_nmr','h_nmr','mass_spec')
-                     if t in self.input_types and e.get(f'has_{t}', False)]
-        always_keep = random.choice(available) if available else None
-
+        # --- your existing modality‐loading logic, verbatim ---
         # HSQC
         if 'hsqc' in self.input_types and e.get('has_hsqc'):
-            h = torch.load(os.path.join(self.root, 'HSQC_NMR', filename), weights_only=True).float()
-            if self.jittering and self.split=='train':
-                h[:,0] += torch.randn_like(h[:,0]) * self.jittering
-                h[:,1] += torch.randn_like(h[:,1]) * self.jittering * 0.1
+            hsqc = torch.load(os.path.join(self.root, 'HSQC_NMR', filename),
+                              weights_only=True).float()
+            if self.jittering > 0 and self.split == 'train':
+                hsqc[:,0] += torch.randn_like(hsqc[:,0]) * self.jittering
+                hsqc[:,1] += torch.randn_like(hsqc[:,1]) * (self.jittering*0.1)
             if self.use_peak_values:
-                h = normalize_hsqc(h)
-            data_inputs['hsqc'] = h
+                hsqc = normalize_hsqc(hsqc)
+            data_inputs['hsqc'] = hsqc
 
         # C_NMR
         if 'c_nmr' in self.input_types and e.get('has_c_nmr'):
-            c = torch.load(os.path.join(self.root, 'C_NMR', filename), weights_only=True).float()
-            c = c.view(-1,1); c = torch.nn.functional.pad(c, (0,2), 'constant', 0)
-            if self.jittering and self.split=='train':
+            c = torch.load(os.path.join(self.root, 'C_NMR', filename),
+                           weights_only=True).float()
+            c = c.view(-1,1); c = F.pad(c, (0,2), 'constant', 0)
+            if self.jittering > 0 and self.split=='train':
                 c += torch.randn_like(c) * self.jittering
             data_inputs['c_nmr'] = c
 
         # H_NMR
         if 'h_nmr' in self.input_types and e.get('has_h_nmr'):
-            h2 = torch.load(os.path.join(self.root, 'H_NMR', filename), weights_only=True).float()
-            h2 = h2.view(-1,1); h2 = torch.nn.functional.pad(h2, (1,1), 'constant', 0)
-            if self.jittering and self.split=='train':
-                h2 += torch.randn_like(h2) * self.jittering * 0.1
+            h2 = torch.load(os.path.join(self.root, 'H_NMR', filename),
+                            weights_only=True).float()
+            h2 = h2.view(-1,1); h2 = F.pad(h2, (1,1), 'constant', 0)
+            if self.jittering > 0 and self.split=='train':
+                h2 += torch.randn_like(h2) * (self.jittering*0.1)
             data_inputs['h_nmr'] = h2
 
-        # optionally drop one NMR branch
-        if 'c_nmr' in self.input_types and 'h_nmr' in self.input_types:
-            if 'c_nmr' not in self.requires and 'h_nmr' not in self.requires and available:
-                r = random.random()
-                # original probabilities ~0.3984 and 0.2032
-                if r <= 0.3984 and always_keep!='c_nmr':
-                    data_inputs.pop('c_nmr', None)
-                elif r <= 0.3984+0.2032 and always_keep!='h_nmr':
-                    data_inputs.pop('h_nmr', None)
+        # optionally drop one branch…
+        if ('c_nmr' in self.input_types and 'h_nmr' in self.input_types
+            and 'c_nmr' not in self.requires and 'h_nmr' not in self.requires):
+            r = random.random()
+            if r <= 0.3984:
+                data_inputs.pop('c_nmr', None)
+            elif r <= 0.3984+0.2032:
+                data_inputs.pop('h_nmr', None)
 
         # Mass spec
         if 'mass_spec' in self.input_types and e.get('has_mass_spec'):
-            if ('mass_spec' in self.requires) or always_keep=='mass_spec' or random.random() >= DROP_MS_PERCENTAGE:
-                m = torch.load(os.path.join(self.root, 'MassSpec', filename), weights_only=True).float()
-                m = torch.nn.functional.pad(m, (0,1), 'constant', 0)
-                if self.jittering and self.split=='train':
+            if ('mass_spec' in self.requires
+                or random.random() >= DROP_MS_PERCENTAGE):
+                m = torch.load(os.path.join(self.root, 'MassSpec', filename),
+                               weights_only=True).float()
+                m = F.pad(m, (0,1), 'constant', 0)
+                if self.jittering > 0 and self.split=='train':
                     noise = torch.zeros_like(m)
-                    noise[:,0] = torch.randn_like(m[:,0]) * (m[:,0]/100_000)
-                    noise[:,1] = torch.randn_like(m[:,1]) * (m[:,1]/10)
+                    noise[:,0] = torch.randn_like(m[:,0])*(m[:,0]/100_000)
+                    noise[:,1] = torch.randn_like(m[:,1])*(m[:,1]/10)
                     m += noise
                 data_inputs['mass_spec'] = m
 
         # MW
         if 'mw' in self.input_types and e.get('mw') is not None:
-            if ('mw' in self.requires) or random.random() >= DROP_MW_PERCENTAGE:
+            if ('mw' in self.requires
+                or random.random() >= DROP_MW_PERCENTAGE):
                 data_inputs['mw'] = torch.tensor(e['mw'], dtype=torch.float)
 
-        # formula idx/cnt + full vector
+        # formula as idx+cnt
         if 'formula' in self.input_types and e.get('formula') is not None:
-            if ('formula' in self.requires) or random.random() >= DROP_FORMULA_PERCENTAGE:
+            if ('formula' in self.requires
+                or random.random() >= DROP_FORMULA_PERCENTAGE):
                 counts = parse_formula(e['formula'])
                 ordered = []
                 if 'C' in counts: ordered.append('C')
                 if 'H' in counts: ordered.append('H')
-                for elem in sorted(x for x in counts if x not in ('C','H')): ordered.append(elem)
+                for elm in sorted(x for x in counts if x not in ('C','H')):
+                    ordered.append(elm)
                 idxs = [self.elem2idx.get(x, self.unk_idx) for x in ordered]
                 cnts = [counts[x] for x in ordered]
                 data_inputs['elem_idx'] = torch.tensor(idxs, dtype=torch.long)
                 data_inputs['elem_cnt'] = torch.tensor(cnts, dtype=torch.long)
-                vec = torch.zeros(len(self.elem2idx)-1, dtype=torch.float)
-                for x,cnt in counts.items():
-                    j = self.elem2idx.get(x)
-                    if j and j>0: vec[j-1] = float(cnt)
-                data_inputs['formula_vec'] = vec
 
-        # target graph
-        graph = e['graph']  # PyG Data
+        # -------------------------------------------------------------------
+        # **MODIFIED**: instead of building a fingerprint, pull in the pre‐built graph
+        # (you must have done that upfront when you created index.pkl)
+        graph = e['graph']
+        # stash smiles on the Data object for sampling/metrics
+        graph.smiles = e.get('smiles', None)
         return data_inputs, graph
 
+# -----------------------------------------------------------------------------
+# **NEW** collate that pads your modalities AND batches PyG graphs
 
-def collate_diffusion(batch):
+def collate(batch):
     dicts, graphs = zip(*batch)
     batch_inputs = {}
-    # sequence modalities
+
+    # 1) sequence modalities
     for mod in INPUTS_CANONICAL_ORDER:
         if mod == 'mw': continue
         seqs = [d.get(mod) for d in dicts]
-        if all(x is None for x in seqs): continue
-        D = next(x.shape[1] for x in seqs if x is not None)
-        padded = [(x if x is not None else torch.zeros((0,D))) for x in seqs]
+        if all(x is None for x in seqs):
+            continue
+        # infer D
+        D = next(x.shape[1] for x in seqs if isinstance(x, torch.Tensor) and x.ndim==2)
+        padded = [
+            x if (isinstance(x,torch.Tensor) and x.ndim==2)
+            else torch.zeros((0,D), dtype=torch.float)
+            for x in seqs
+        ]
         batch_inputs[mod] = pad_sequence(padded, batch_first=True)
-    # mw scalar
+
+    # 2) MW scalar
     mws = [d.get('mw') for d in dicts]
     if any(x is not None for x in mws):
-        batch_inputs['mw'] = torch.tensor([float(x) if x is not None else 0.0 for x in mws])
-    # elem_idx/cnt
+        vals = [float(x) if x is not None else 0.0 for x in mws]
+        batch_inputs['mw'] = torch.tensor(vals, dtype=torch.float)
+
+    # 3) element tokens
     idxs = [d.get('elem_idx') for d in dicts]
     if any(x is not None for x in idxs):
         batch_inputs['elem_idx'] = pad_sequence(
-            [(x if x is not None else torch.zeros(0,dtype=torch.long)) for x in idxs],
-            batch_first=True, padding_value=0)
+            [ x if x is not None else torch.zeros(0,dtype=torch.long) for x in idxs ],
+            batch_first=True, padding_value=0
+        )
         cnts = [d.get('elem_cnt') for d in dicts]
         batch_inputs['elem_cnt'] = pad_sequence(
-            [(x if x is not None else torch.zeros(0,dtype=torch.long)) for x in cnts],
-            batch_first=True, padding_value=0)
-    # formula_vec
-    vecs = [d.get('formula_vec') for d in dicts]
-    if any(v is not None for v in vecs):
-        # find a reference tensor for shape
-        ref = next(v for v in vecs if v is not None)
-        filled = [v if v is not None else torch.zeros_like(ref) for v in vecs]
-        batch_inputs['formula_vec'] = torch.stack(filled, dim=0)
+            [ x if x is not None else torch.zeros(0,dtype=torch.long) for x in cnts ],
+            batch_first=True, padding_value=0
+        )
 
-    # batch graphs
-    graph_batch = Batch.from_data_list(list(graphs))
+    # 4) batch the graphs
+    graph_batch = Batch.from_data_list(graphs)
+
     return batch_inputs, graph_batch
 
 class MoonshotDataModule(pl.LightningDataModule):
-    def __init__(self, args: Args, results_path: str):
+    def __init__(self, args: Args, results_path: str, fp_loader = None):
         super().__init__()
         self.args = args
         self.batch_size = args.batch_size
         self.num_workers = args.num_workers
+        self.persistent_workers = args.persistent_workers
         self.results_path = results_path
 
+        # build combinations logic as before…
+        from itertools import combinations
+        optional = set(args.input_types) - set(args.requires)
+        combos = []
+        for r in range(len(optional)+1):
+            for subset in combinations(optional, r):
+                combo = set(args.requires) | set(subset)
+                combos.append([m for m in INPUTS_CANONICAL_ORDER if m in combo])
+        names = ['+'.join(c) if len(c)<len(args.input_types) else 'ALL' for c in combos]
+        zipped = sorted(zip(names, combos))
+        self.combinations_names, self.combinations_list = zip(*zipped)
+
     def setup(self, stage=None):
-        if stage in ('fit', None):
-            self.train = MoonshotDataset(self.args, self.results_path, split='train')
-            self.val   = MoonshotDataset(self.args, self.results_path, split='val')
-        if stage=='test':
-            self.test  = MoonshotDataset(self.args, self.results_path, split='test')
+        if stage in (None, 'fit', 'validate'):
+            self.train = MoonshotDataset(self.args, self.results_path, None, split='train')
+            if self.args.validate_all:
+                self.val = [
+                    MoonshotDataset(self.args, self.results_path, None,
+                                    split='val',
+                                    overrides={'input_types':combo,'requires':combo})
+                    for combo in self.combinations_list
+                ]
+            else:
+                self.val = MoonshotDataset(self.args, self.results_path, None,
+                                           split='val',
+                                           overrides={'input_types':self.args.input_types,
+                                                      'requires':self.args.input_types})
+
+        if stage in (None, 'test'):
+            if self.args.validate_all:
+                self.test = [
+                    MoonshotDataset(self.args, self.results_path, None,
+                                    split='test',
+                                    overrides={'input_types':combo,'requires':combo})
+                    for combo in self.combinations_list
+                ]
+            else:
+                self.test = MoonshotDataset(self.args, self.results_path, None,
+                                            split='test',
+                                            overrides={'input_types':self.args.input_types,
+                                                       'requires':self.args.input_types})
 
     def train_dataloader(self):
-        return DataLoader(self.train, batch_size=self.batch_size, shuffle=True,
-            collate_fn=collate_diffusion, num_workers=self.num_workers)
+        return DataLoader(
+            self.train,
+            batch_size=self.batch_size,
+            shuffle=True,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.persistent_workers,
+            collate_fn=collate,
+        )
 
     def val_dataloader(self):
-        return DataLoader(self.val, batch_size=self.batch_size, shuffle=False,
-            collate_fn=collate_diffusion, num_workers=self.num_workers)
+        if self.args.validate_all:
+            return [
+                DataLoader(ds,
+                           batch_size=self.batch_size,
+                           shuffle=False,
+                           num_workers=self.num_workers,
+                           pin_memory=True,
+                           persistent_workers=self.persistent_workers,
+                           collate_fn=collate)
+                for ds in self.val
+            ]
+        return DataLoader(
+            self.val,
+            batch_size=self.batch_size,
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.persistent_workers,
+            collate_fn=collate,
+        )
 
     def test_dataloader(self):
-        return DataLoader(self.test, batch_size=self.batch_size, shuffle=False,
-            collate_fn=collate_diffusion, num_workers=self.num_workers)
+        if self.args.validate_all:
+            return [
+                DataLoader(ds,
+                           batch_size=1, # override for single sample
+                           shuffle=False,
+                           num_workers=self.num_workers,
+                           pin_memory=True,
+                           persistent_workers=self.persistent_workers,
+                           collate_fn=collate)
+                for ds in self.test
+            ]
+        return DataLoader(
+            self.test,
+            batch_size=1, # override for single sample
+            shuffle=False,
+            num_workers=self.num_workers,
+            pin_memory=True,
+            persistent_workers=self.persistent_workers,
+            collate_fn=collate,
+        )

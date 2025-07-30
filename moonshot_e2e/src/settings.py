@@ -1,12 +1,13 @@
 from typing import Literal, List, Dict, Optional
 from pydantic.dataclasses import dataclass
 from dataclasses import field
+from pathlib import Path
 
 @dataclass
 class Args:
-    experiment_name: str = 'moonshot-development'
-    code_root: str = '/root/gurusmart/Moonshot/moonshot_e2e'
-    inference_root: str = '/root/gurusmart/Moonshot/inference_data'
+    experiment_name: str = 'mixed-attention-development'
+    code_root: str = str(Path(__file__).resolve().parent.parent)
+    inference_root: str = str(Path(__file__).resolve().parent.parent / "inference_data")
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0
@@ -22,7 +23,7 @@ class Args:
     debug: bool = False
     fp_type: Literal['Entropy', 'HYUN', 'Normal'] = 'Entropy'
     fp_radius: Optional[int] = 6
-    batch_size: int = 32
+    batch_size: int = 128
     num_workers: int = 8
     epochs: int = 500
     patience: int = 30
@@ -65,6 +66,7 @@ class Args:
     warm_up_steps: int = 0
     freeze_weights: bool = False
     use_jaccard: bool = False
+    spectre_ckpt: str | None = None  # path to pretrained SPECTRE checkpoint
 
     # testing args
     rank_by_soft_output: bool = True
@@ -72,11 +74,11 @@ class Args:
 
     visualize: bool = False
     
-    node_feat_dim:      int = 5     # number of features in graph.x
-    edge_attr_dim:      int = 3     # (if you ever use edge_attr)
-    timesteps:          int = 1000
-    beta_start:         float = 1e-4
-    beta_end:           float = 2e-2
-    diff_hidden:        int = 512
-    diff_heads:         int = 8
-    diff_layers:        int = 4
+    timesteps:        int     = 1000     # number of forward diffusion steps
+    beta_start:       float   = 1e-4     # β₁
+    beta_end:         float   = 0.02     # β_T
+    node_feat_dim:    int     = 5        # dimensionality of your raw atom features
+    edge_attr_dim:    int     = 3        # dimensionality of your raw bond features (if you ever use them)
+    diff_hidden:      int     = 256      # hidden size inside GraphDenoiser
+    diff_heads:       int     = 4        # number of attention heads in your GAT layers
+    diff_layers:      int     = 4        # number of GATConv layers
