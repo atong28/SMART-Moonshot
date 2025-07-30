@@ -15,7 +15,7 @@ from .src.model import SPECTRE, OptionalInputSPECTRE
 from .src.dataset import MoonshotDataModule
 
 
-def test(args: Args, data_module: MoonshotDataModule, results_path: str, model: SPECTRE | OptionalInputSPECTRE, ckpt_path: str | None = None, wandb_run = None):
+def test(args: Args, data_module: MoonshotDataModule, model: SPECTRE | OptionalInputSPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None):
     wandb_logger = WandbLogger(experiment=wandb_run)
     metric = 'val/mean_cos'
     ckpt_callback = cb.ModelCheckpoint(

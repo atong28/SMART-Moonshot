@@ -5,20 +5,21 @@ import traceback
 import sys
 import logging
 import random
-import re
+
 from itertools import islice, combinations
 
 from torch.utils.data import DataLoader, Dataset
+import torch.distributed as dist
 from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
-from .const import (
-    DEBUG_LEN, DROP_MW_PERCENTAGE, DROP_MS_PERCENTAGE, DROP_FORMULA_PERCENTAGE,
-    INPUTS_CANONICAL_ORDER, ELEM2IDX, UNK_IDX, FORMULA_RE
-)
 from .settings import Args
 from .fp_loaders.entropy import EntropyFPLoader
+
+from .const import (
+    DEBUG_LEN, DROP_MW_PERCENTAGE, DROP_MS_PERCENTAGE, INPUTS_CANONICAL_ORDER
+)
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
@@ -42,15 +43,6 @@ def init_logger(path):
         logger.addHandler(fh)
         logger.addHandler(logging.StreamHandler(sys.stdout))
     return logger
-
-def parse_formula(formula: str) -> dict[str,int]:
-    """
-    Turn "C20H25BrN2O2" → {"C":20, "H":25, "Br":1, "N":2, "O":2}
-    """
-    counts: dict[str,int] = {}
-    for elem, cnt in FORMULA_RE.findall(formula):
-        counts[elem] = int(cnt) if cnt else 1
-    return counts
 
 def normalize_hsqc(hsqc):
     """
@@ -117,20 +109,12 @@ class MoonshotDataset(Dataset):
                 any(
                     entry[f'has_{input_type}']
                     for input_type in self.input_types
-                    if input_type not in ('mw', 'formula')
+                    if input_type != 'mw'
                 )
             }
             data_len = len(data)
             logger.info(f'[MoonshotDataset] Requiring the following items to be present: {self.requires}')
-            data = {
-                idx: entry for idx, entry in data.items()
-                if all(
-                    entry[f'has_{dtype}']
-                    if dtype not in ('mw', 'formula')
-                    else entry[dtype] is not None
-                    for dtype in self.requires
-                )
-            }
+            data = {idx: entry for idx, entry in data.items() if all(entry[f'has_{dtype}'] for dtype in self.requires)}
             logger.info(f'[MoonshotDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
             
             if self.debug and len(data) > DEBUG_LEN:
@@ -142,9 +126,6 @@ class MoonshotDataset(Dataset):
             self.jittering = args.jittering
             self.use_peak_values = args.use_peak_values
             self.fp_loader = fp_loader
-            self.elem2idx = ELEM2IDX
-            self.unk_idx   = UNK_IDX
-            self.idx2elem = {i: e for e, i in self.elem2idx.items()}
             logger.info('[MoonshotDataset] Setup complete!')
 
         except Exception:
@@ -222,23 +203,6 @@ class MoonshotDataset(Dataset):
         if 'mw' in self.input_types and data_obj['has_mw']:
             if 'mw' in self.requires or ('mw' not in self.requires and random.random() >= DROP_MW_PERCENTAGE):
                 data_inputs['mw'] = torch.tensor(data_obj['mw'], dtype=torch.float)
-        
-        if 'formula' in self.input_types and data_obj.get('formula', None) is not None:
-            if 'formula' in self.requires or ('formula' not in self.requires and random.random() >= DROP_FORMULA_PERCENTAGE):
-                formula = data_obj['formula']
-                elem_counts = parse_formula(formula)
-                # Hill order: C, H, then alphabetical
-                ordered = []
-                if 'C' in elem_counts: ordered.append('C')
-                if 'H' in elem_counts: ordered.append('H')
-                for e in sorted(e for e in elem_counts if e not in ('C','H')):
-                    ordered.append(e)
-                # map to indices & counts
-                idxs = [ self.elem2idx.get(e, UNK_IDX) for e in ordered ]
-                cnts = [ elem_counts[e]       for e in ordered ]
-                # store as 1D tensors
-                data_inputs['elem_idx'] = torch.tensor(idxs, dtype=torch.long)
-                data_inputs['elem_cnt'] = torch.tensor(cnts, dtype=torch.long)
                 
         if self.fp_type == 'Entropy':
             mfp = self.fp_loader.build_mfp(data_idx)
@@ -286,26 +250,7 @@ def collate(batch):
         # create a (B,) tensor of scalars
         batch_inputs["mw"] = torch.tensor(mw_floats, dtype=torch.float)
 
-    # 3) Handle element‐group tokens (idx + count)
-    elem_idx_seqs = [d.get('elem_idx') for d in dicts]
-    if any(x is not None for x in elem_idx_seqs):
-        # pad element‐ID sequences (pad_value=0)
-        batch_inputs['elem_idx'] = pad_sequence(
-            [x if x is not None else torch.zeros(0,dtype=torch.long)
-             for x in elem_idx_seqs],
-            batch_first=True,
-            padding_value=0
-        )
-        # pad count sequences (pad_value=0)
-        cnt_seqs = [d.get('elem_cnt') for d in dicts]
-        batch_inputs['elem_cnt'] = pad_sequence(
-            [x if x is not None else torch.zeros(0,dtype=torch.long)
-             for x in cnt_seqs],
-            batch_first=True,
-            padding_value=0
-        )
-
-    # 4) Stack your fingerprints
+    # 3) Stack your fingerprints
     batch_fps = torch.stack(fps, dim=0)
     return batch_inputs, batch_fps
 

@@ -18,3 +18,5 @@ UNK_IDX = len(ELEMENT_VOCAB) + 1
 
 # regex to split element symbols (1 or 2 letters) and optional count
 FORMULA_RE = re.compile(r'([A-Z][a-z]?)(\d*)')
+
+DO_NOT_OVERRIDE = ['train', 'test', 'visualize', 'load_from_checkpoint']

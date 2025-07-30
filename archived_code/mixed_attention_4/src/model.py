@@ -6,7 +6,6 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
-from .const import ELEM2IDX
 from .settings import Args
 from .utils import L1
 from .fp_loaders.entropy import EntropyFPLoader
@@ -146,14 +145,6 @@ class SPECTRE(pl.LightningModule):
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
-        num_elem_tokens = len(ELEM2IDX) + 1    # +1 for PAD=0
-        self.elem_embed = nn.Embedding(
-            num_embeddings = num_elem_tokens,
-            embedding_dim  = self.dim_model,
-            padding_idx    = 0
-        )
-        self.cnt_embed = nn.Linear(1, self.dim_model)
-
 
         self.bce_pos_weight = None
         logger.info("[SPECTRE] bce_pos_weight = None")
@@ -184,7 +175,7 @@ class SPECTRE(pl.LightningModule):
         all_masks = []
 
         for m, x in batch.items():
-            if m in ("mw", "elem_idx", "elem_cnt"):
+            if m == "mw":
                 continue
 
             # x: (B, L, D_in)
@@ -208,21 +199,6 @@ class SPECTRE(pl.LightningModule):
             mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)  # (B, 1, D)
             all_points.append(mw_feat)
             all_masks.append(torch.zeros(B, 1, dtype=torch.bool, device=mw_feat.device))
-
-        if 'elem_idx' in batch and 'elem_cnt' in batch:
-            # (B, L_elem)
-            eidx = batch['elem_idx']
-            ecnt = batch['elem_cnt'].unsqueeze(-1).float()  # → (B, L, 1)
-
-            # embed
-            ve = self.elem_embed(eidx)    # → (B, L, D)
-            vc = self.cnt_embed(ecnt)     # → (B, L, D)
-            te = ve + vc                  # combine by addition
-
-            # padding mask: True=pad, False=real
-            me = (eidx == 0)              # → (B, L)
-            all_points.append(te)
-            all_masks.append(me)
 
         # 5. Concatenate all modality outputs and masks
         joint_seq = torch.cat(all_points, dim=1)  # (B, N_total+1, D)

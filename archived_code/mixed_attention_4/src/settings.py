@@ -4,8 +4,8 @@ from dataclasses import field
 
 @dataclass
 class Args:
-    experiment_name: str = 'mixed2-attention-development'
-    code_root: str = '/root/gurusmart/Moonshot/mixed2_attention'
+    experiment_name: str = 'mixed-attention-development'
+    code_root: str = '/root/gurusmart/Moonshot/mixed_attention'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'
@@ -14,10 +14,10 @@ class Args:
     train: bool = True
     test: bool = True
     
-    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
-        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']
+    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
+        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
     )
-    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(default_factory=lambda: [])
+    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(default_factory=lambda: [])
     
     debug: bool = False
     fp_type: Literal['Entropy', 'HYUN', 'Normal'] = 'Entropy'

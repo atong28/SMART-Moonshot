@@ -4,8 +4,8 @@ from dataclasses import field
 
 @dataclass
 class Args:
-    experiment_name: str = 'mixed-attention-development'
-    code_root: str = '/root/gurusmart/Moonshot/mixed_attention'
+    experiment_name: str = 'moonshot-development'
+    code_root: str = '/root/gurusmart/Moonshot/moonshot_e2e'
     inference_root: str = '/root/gurusmart/Moonshot/inference_data'
     data_root: str = '/workspace'
     split: Literal['train', 'val', 'test'] = 'train'
@@ -22,7 +22,7 @@ class Args:
     debug: bool = False
     fp_type: Literal['Entropy', 'HYUN', 'Normal'] = 'Entropy'
     fp_radius: Optional[int] = 6
-    batch_size: int = 128
+    batch_size: int = 32
     num_workers: int = 8
     epochs: int = 500
     patience: int = 30
@@ -71,3 +71,12 @@ class Args:
     rank_by_test_set: bool = False
 
     visualize: bool = False
+    
+    node_feat_dim:      int = 5     # number of features in graph.x
+    edge_attr_dim:      int = 3     # (if you ever use edge_attr)
+    timesteps:          int = 1000
+    beta_start:         float = 1e-4
+    beta_end:           float = 2e-2
+    diff_hidden:        int = 512
+    diff_heads:         int = 8
+    diff_layers:        int = 4
