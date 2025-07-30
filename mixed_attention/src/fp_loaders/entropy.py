@@ -84,8 +84,10 @@ class EntropyFPLoader:
     
     def build_inference_ranking_set_with_everything(self, fp_dim, max_radius, use_hyun_fp = False):
         if use_hyun_fp:
-            rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/hyun_fp_stacked_together_sparse/FP_normalized.pt"
+            raise NotImplementedError()
+            # rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/hyun_fp_stacked_together_sparse/FP_normalized.pt"
         else:
-            rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/non_collision_FP_rankingset_max_radius_{max_radius}_dim_{fp_dim}_stacked_together/FP.pt"
+            rankingset_path = os.path.join(self.args.inference_root, 'rankingset.pt')
+            # rankingset_path = f"{self.args.inference_root}/inference_rankingset_with_stable_sort/non_collision_FP_rankingset_max_radius_{max_radius}_dim_{fp_dim}_stacked_together/FP.pt"
         print(f"Loading {rankingset_path}")
         return torch.load(rankingset_path, weights_only=True)

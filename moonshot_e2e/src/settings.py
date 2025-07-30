@@ -8,7 +8,7 @@ class Args:
     experiment_name: str = 'mixed-attention-development'
     code_root: str = str(Path(__file__).resolve().parent.parent)
     inference_root: str = str(Path(__file__).resolve().parent.parent / "inference_data")
-    data_root: str = '/workspace'
+    data_root: str = '/data/nas-gpu/wang/atong/MoonshotDataset'
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0
     load_from_checkpoint: str | None = None

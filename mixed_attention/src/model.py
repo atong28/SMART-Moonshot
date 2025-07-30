@@ -321,7 +321,7 @@ class SPECTRE(pl.LightningModule):
             di[f"val/mean_{feat}"] = np.mean([v[feat]
                                              for v in self.validation_step_outputs])
         for k, v in di.items():
-            self.log(k, v, on_epoch=True, prog_bar=k=="val/mean_rank_1")
+            self.log(k, v, on_epoch=True, prog_bar=k=="val/mean_rank_1", sync_dist=True)
         self.validation_step_outputs.clear()
         
     def on_test_epoch_end(self):

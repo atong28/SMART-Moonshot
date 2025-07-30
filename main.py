@@ -123,7 +123,7 @@ if __name__ == "__main__":
 
     # rank0: copy out and finish wandb
     if is_main_process():
-        logger.info("[Main] Copying results to final destination")
+        logger.info("[Main] Moving results to final destination")
         os.makedirs(os.path.dirname(final_path), exist_ok=True)
-        shutil.copytree(results_path, final_path, dirs_exist_ok=True)
+        shutil.move(results_path, final_path)
         wandb.finish()

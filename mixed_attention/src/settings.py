@@ -1,13 +1,14 @@
 from typing import Literal, List, Dict, Optional
 from pydantic.dataclasses import dataclass
 from dataclasses import field
+from pathlib import Path
 
 @dataclass
 class Args:
     experiment_name: str = 'mixed-attention-development'
-    code_root: str = '/root/gurusmart/Moonshot/mixed_attention'
-    inference_root: str = '/root/gurusmart/Moonshot/inference_data'
-    data_root: str = '/workspace'
+    code_root: str = str(Path(__file__).resolve().parent.parent)
+    inference_root: str = str(Path(__file__).resolve().parent.parent / "inference_data")
+    data_root: str = '/data/nas-gpu/wang/atong/MoonshotDataset'
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0
     load_from_checkpoint: str | None = None

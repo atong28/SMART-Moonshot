@@ -46,4 +46,4 @@ def parse_args():
     parse_fn = getattr(import_module(f'{mode}.src.args'), 'parse_args')
     if parse_fn is None:
         raise NotImplementedError()
-    return parse_fn(remaining_argv), mode
+    return parse_fn(remaining_argv)
