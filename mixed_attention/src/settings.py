@@ -6,8 +6,9 @@ from pathlib import Path
 @dataclass
 class Args:
     experiment_name: str = 'mixed-attention-development'
+    project_name: str = 'SPECTRE'
     code_root: str = str(Path(__file__).resolve().parent.parent)
-    inference_root: str = str(Path(__file__).resolve().parent.parent / "inference_data")
+    inference_root: str = str(Path(__file__).resolve().parent.parent.parent / "inference_data")
     data_root: str = '/data/nas-gpu/wang/atong/MoonshotDataset'
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0

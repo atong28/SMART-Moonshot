@@ -75,7 +75,7 @@ if __name__ == "__main__":
             key = json.load(kf)["key"]
         wandb.login(key=key)
         wandb_run = wandb.init(
-            project="SPECTRE",
+            project=args.project_name,
             name=experiment_id,
             config=vars(args),
             resume="allow",

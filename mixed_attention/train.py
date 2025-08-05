@@ -84,4 +84,4 @@ def train(args: Args, data_module: MoonshotDataModule, model: SPECTRE | Optional
     trainer.strategy.barrier()
 
     if args.test and trainer.local_rank == 0:
-        test(args, data_module, results_path, model, None)
+        test(args, data_module, model, results_path, None)
