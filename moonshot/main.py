@@ -48,8 +48,8 @@ def init_logger(path):
     return logger
 
 if __name__ == '__main__':
-    use_cache = False
-    dump_cache = True
+    use_cache = True
+    dump_cache = False
     if use_cache and os.path.exists('cache.pkl'):
         moonshot_args, spectre_path, spectre_args, datamodule, dataset_infos = pickle.load(open('cache.pkl', 'rb'))
         today = datetime.now().strftime("%Y-%m-%d")

@@ -83,35 +83,29 @@ if __name__ == "__main__":
     else:
         wandb_run = None
 
-    # instantiate data + model
-    if model_mode == "moonshot_e2e":
-        # diffusion end‐to‐end: no fingerprint loader
-        data_module = build_dataset(model_mode, args, results_path)
-        model = build_model(model_mode, args)
-    else:
-        # fixed‐input spectral ranking: needs an FP loader
-        fp_loader   = get_fp_loader(model_mode, args)
-        data_module = build_dataset(
-            model_mode, args, results_path, fp_loader
-        )
-        model       = build_model(
-            model_mode,
-            args,
-            optional_inputs=(set(args.requires) != set(args.input_types)),
-            fp_loader=fp_loader,
-            combinations_names=data_module.combinations_names,
-        )
+    # fixed‐input spectral ranking: needs an FP loader
+    fp_loader = get_fp_loader(model_mode, args)
+    data_module = build_dataset(
+        model_mode, args, results_path, fp_loader
+    )
+    model = build_model(
+        model_mode,
+        args,
+        optional_inputs=(set(args.requires) != set(args.input_types)),
+        fp_loader=fp_loader,
+        combinations_names=data_module.combinations_names,
+    )
 
-        # visualization shortcut
-        if args.visualize and is_main_process():
-            logger.info("[Main] Entering visualization mode")
-            visualize(
-                model_mode,
-                data_module,
-                model,
-                ckpt_path=args.load_from_checkpoint,
-            )
-            sys.exit(0)
+    # visualization shortcut
+    if args.visualize and is_main_process():
+        logger.info("[Main] Entering visualization mode")
+        visualize(
+            model_mode,
+            data_module,
+            model,
+            ckpt_path=args.load_from_checkpoint,
+        )
+        sys.exit(0)
 
     # training or testing
     if args.train:

@@ -55,6 +55,7 @@ def parse_args(argv):
     parser.add_argument('--ff_dim', type=int)
     parser.add_argument('--out_dim', type=int)
     parser.add_argument('--accumulate_grad_batches_num', type=int)
+    parser.add_argument('--arch', type=int)
 
     parser.add_argument('--dropout', type=float)
     parser.add_argument('--ranking_set_path')
