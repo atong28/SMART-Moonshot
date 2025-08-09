@@ -19,9 +19,16 @@ DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
 
 FP_RADIUS = 6
 
-DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDataset'
-INFERENCE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot/inference_data'
-CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
+if 'nas-gpu' in __file__:
+    print('Detected yuzu setup')
+    INFERENCE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot/inference_data'
+    CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
+    DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDataset'
+else:
+    print('Detected nautilus setup')
+    INFERENCE_ROOT = '/root/gurusmart/Moonshot/inference_data'
+    CODE_ROOT = '/root/gurusmart/Moonshot'
+    DATASET_ROOT = '/workspace'
 
 _pt = Chem.GetPeriodicTable()
 

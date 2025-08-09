@@ -50,11 +50,6 @@ class EntropyFPLoader(FPLoader):
         if out_dim == 'inf' or out_dim == float("inf"):
             out_dim = len(filtered_bitinfos_and_their_counts)
         self.out_dim = out_dim
-         
-        # create a N*2 array of  [entropy, smiles]
-        # with open(f'/root/gurusmart/MorganFP_prediction/inference_data/coconut_loutus_hyun_training/inference_metadata_latest_RDkit.pkl', 'rb') as file:
-        #     retrieval_set = pickle.load(file)
-        # retrieval_set_size = len(retrieval_set)
         retrieval_set_size = 526316
         entropy_each_frag = compute_entropy(counts, total_dataset_size = retrieval_set_size)
         indices_of_high_entropy = np.argsort(entropy_each_frag, kind="stable")[:out_dim]

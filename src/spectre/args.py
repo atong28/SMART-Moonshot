@@ -16,10 +16,6 @@ def parse_args(argv) -> SPECTREArgs:
     parser = argparse.ArgumentParser(argv)
 
     parser.add_argument('--experiment_name')
-    parser.add_argument('--code_root')
-    parser.add_argument('--inference_root')
-    parser.add_argument('--data_root')
-    parser.add_argument('--split', choices=['train', 'val', 'test'])
     parser.add_argument('--seed', type=int)
     parser.add_argument('--load_from_checkpoint')
 
