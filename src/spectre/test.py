@@ -10,7 +10,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning.callbacks as cb
 import pytorch_lightning as pl
 
-from ..settings import SPECTREArgs
+from .settings import SPECTREArgs
 from .model import SPECTRE
 from ..dataset.spectre import SPECTREDataModule
 

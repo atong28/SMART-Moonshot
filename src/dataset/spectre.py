@@ -13,7 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
 from ..const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
-from ..settings import SPECTREArgs
+from ..spectre.settings import SPECTREArgs
 from ..spectre.fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
 

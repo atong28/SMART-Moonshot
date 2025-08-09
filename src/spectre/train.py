@@ -8,7 +8,7 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.model_summary import summarize
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from ..settings import SPECTREArgs
+from .settings import SPECTREArgs
 from ..dataset.spectre import SPECTREDataModule
 from .model import SPECTRE
 from .test import test
