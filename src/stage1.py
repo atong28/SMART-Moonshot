@@ -36,8 +36,8 @@ from spectre.fp_loader import EntropyFPLoader
 from spectre.model import SPECTRE
 from spectre.train import train
 from spectre.test import test
+from spectre.const import DATASET_ROOT, CODE_ROOT
 from dataset.spectre import SPECTREDataModule
-from const import DATASET_ROOT, CODE_ROOT
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -83,7 +83,6 @@ if __name__ == "__main__":
     else:
         wandb_run = None
 
-    # fixed‐input spectral ranking: needs an FP loader
     fp_loader = EntropyFPLoader()
     data_module = SPECTREDataModule(args, fp_loader)
     model = SPECTRE(args, fp_loader)
@@ -95,7 +94,6 @@ if __name__ == "__main__":
     else:
         raise ValueError("[Main] Both --no_train and --no_test set; nothing to do!")
 
-    # rank0: copy out and finish wandb
     if is_main_process():
         logger.info("[Main] Moving results to final destination")
         os.makedirs(os.path.dirname(final_path), exist_ok=True)
