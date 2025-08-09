@@ -2,7 +2,7 @@ import argparse
 import os
 import json
 
-from ..const import DO_NOT_OVERRIDE
+from .const import DO_NOT_OVERRIDE
 from .settings import SPECTREArgs
 
 def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):

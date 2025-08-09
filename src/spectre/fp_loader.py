@@ -4,7 +4,7 @@ import torch
 import os
 import time
 
-from ..const import DATASET_ROOT, CODE_ROOT, INFERENCE_ROOT
+from .const import DATASET_ROOT, CODE_ROOT, INFERENCE_ROOT
 from .fp_utils import compute_entropy, count_circular_substructures
 
 class FPLoader:

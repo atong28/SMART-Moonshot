@@ -7,7 +7,7 @@ import numpy as np
 from collections import defaultdict  
 from rdkit.Chem import rdFingerprintGenerator
 
-from ..const import DATASET_ROOT, INFERENCE_ROOT
+from .const import DATASET_ROOT, INFERENCE_ROOT
 # DATASETS = ["OneD_Only_Dataset", "SMILES_dataset"]
 # DATASET_INDEX_SOURCE = ["oneD_NMR" , "HSQC"]
 RADIUS_UPPER_LIMIT = 10

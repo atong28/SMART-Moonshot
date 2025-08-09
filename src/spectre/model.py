@@ -7,7 +7,7 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
-from ..const import ELEM2IDX
+from .const import ELEM2IDX
 from .settings import SPECTREArgs
 from .utils import L1
 from .fp_loader import FPLoader
