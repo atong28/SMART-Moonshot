@@ -305,6 +305,7 @@ dependencies:
       - tokenizers==0.21.0
       - tomlkit==0.13.2
       - torch-geometric==2.6.1
+      - torch-scatter==2.1.2
       - torchelastic==0.2.2
       - torchmetrics==1.6.1
       - tornado==6.4.2

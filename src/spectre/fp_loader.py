@@ -4,7 +4,7 @@ import torch
 import os
 import time
 
-from .const import DATASET_ROOT, CODE_ROOT, INFERENCE_ROOT
+from .const import DATASET_ROOT, CODE_ROOT
 from .fp_utils import compute_entropy, count_circular_substructures
 
 class FPLoader:
@@ -90,5 +90,5 @@ class EntropyFPLoader(FPLoader):
         return torch.tensor(mfp).float()
     
     def load_rankingset(self):
-        rankingset_path = os.path.join(INFERENCE_ROOT, 'rankingset.pt')
+        rankingset_path = os.path.join(DATASET_ROOT, 'rankingset.pt')
         return torch.load(rankingset_path, weights_only=True)

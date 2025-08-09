@@ -7,7 +7,7 @@ import numpy as np
 from collections import defaultdict  
 from rdkit.Chem import rdFingerprintGenerator
 
-from .const import DATASET_ROOT, INFERENCE_ROOT
+from .const import DATASET_ROOT
 # DATASETS = ["OneD_Only_Dataset", "SMILES_dataset"]
 # DATASET_INDEX_SOURCE = ["oneD_NMR" , "HSQC"]
 RADIUS_UPPER_LIMIT = 10
@@ -92,8 +92,8 @@ def merge_counts(counts_list):
 def get_all_fragments_from_all_smiles_in_retrieval_dataset():
     # Load the dataset
     count_results = []
-    
-    with open(f'{INFERENCE_ROOT}/coconut_loutus_hyun_training/inference_metadata_latest_RDkit.pkl', 'rb') as file:
+    raise NotImplementedError()
+    with open(f'INFERENCE_ROOT/coconut_loutus_hyun_training/inference_metadata_latest_RDkit.pkl', 'rb') as file:
         smiles_and_names = pickle.load(file)
         all_SMILES = [x[0] for x in smiles_and_names]
         
