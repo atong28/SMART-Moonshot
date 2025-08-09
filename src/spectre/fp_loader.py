@@ -11,6 +11,9 @@ class FPLoader:
     def __init__(self) -> None:
         raise NotImplementedError()
     
+    def setup(self, out_dim, max_radius):
+        raise NotImplementedError() 
+    
     def build_mfp(self, idx: int) -> torch.Tensor:
         raise NotImplementedError()
     

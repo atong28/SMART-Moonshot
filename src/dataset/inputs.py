@@ -4,7 +4,7 @@ from typing import Iterable, Dict
 import torch
 import torch.nn.functional as F
 
-from ..const import INPUT_TYPES, UNK_IDX, FORMULA_RE, ELEM2IDX
+from ..spectre.const import INPUT_TYPES, UNK_IDX, FORMULA_RE, ELEM2IDX
 from ..spectre.fp_loader import FPLoader
 
 def parse_formula(formula: str) -> dict[str,int]:

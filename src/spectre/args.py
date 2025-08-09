@@ -12,8 +12,8 @@ def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):
         parser.add_argument(f'--{name}', dest=name, action='store_true')
     parser.set_defaults(**{name: default})
 
-def parse_args(argv) -> SPECTREArgs:
-    parser = argparse.ArgumentParser(argv)
+def parse_args() -> SPECTREArgs:
+    parser = argparse.ArgumentParser()
 
     parser.add_argument('--experiment_name')
     parser.add_argument('--seed', type=int)

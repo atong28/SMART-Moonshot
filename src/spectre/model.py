@@ -164,8 +164,8 @@ class SPECTRE(pl.LightningModule):
             self.cross_attn = L1(self.cross_attn, self.l1_decay)
             self.self_attn  = L1(self.self_attn,  self.l1_decay)
             self.fc         = L1(self.fc,         self.l1_decay)
-
-        self.ranker = RankingSet(store=self.fp_loader.load_rankingset())
+        
+        self.ranker = None
         
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
@@ -316,3 +316,6 @@ class SPECTRE(pl.LightningModule):
         if kwargs.get('sync_dist') is None:
             kwargs['sync_dist'] = logger_should_sync_dist
         super().log(name, value, *args, **kwargs)
+
+    def setup_ranker(self):
+        self.ranker = RankingSet(store=self.fp_loader.load_rankingset())

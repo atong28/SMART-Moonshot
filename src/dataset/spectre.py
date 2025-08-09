@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
-from ..const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
+from ..spectre.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
 from ..spectre.settings import SPECTREArgs
 from ..spectre.fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
@@ -76,15 +76,18 @@ class SPECTREDataset(Dataset):
             'h_nmr': data_obj['has_h_nmr'],
             'mass_spec': data_obj['has_mass_spec']
         }
-        available_types = [k for k, v in available_types.items() if k in self.input_types and v]
-        if len(available_types) > 0:
-            always_keep = random.choice(available_types)
-            input_types = set(self.input_types)
-            for input_type in self.input_types:
-                if input_type != always_keep and input_type not in self.requires and random.random() < DROP_PERCENTAGE[input_type]:
-                    input_types.remove(input_type)
-        else:
-            input_types = set(self.input_types)
+        drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
+        assert len(drop_candidates) > 0, 'Found an empty entry!'
+        
+        always_keep = random.choice(drop_candidates)
+        input_types = set(self.input_types)
+        for input_type in self.input_types:
+            if not data_obj[f'has_{input_type}']:
+                input_types.remove(input_type)
+            elif (input_type != always_keep and 
+                  input_type not in self.requires and 
+                  random.random() < DROP_PERCENTAGE[input_type]):
+                input_types.remove(input_type)
         return self.spectral_loader.load(data_idx, input_types, jittering = self.jittering), self.mfp_loader.load(data_idx)
 
 def collate(batch):

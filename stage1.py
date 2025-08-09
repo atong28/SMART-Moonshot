@@ -30,14 +30,14 @@ import numpy as np
 import random
 import torch
 
-from spectre.args import parse_args
-from spectre.settings import SPECTREArgs
-from spectre.fp_loader import EntropyFPLoader
-from spectre.model import SPECTRE
-from spectre.train import train
-from spectre.test import test
-from spectre.const import DATASET_ROOT, CODE_ROOT
-from dataset.spectre import SPECTREDataModule
+from src.spectre.args import parse_args
+from src.spectre.settings import SPECTREArgs
+from src.spectre.fp_loader import EntropyFPLoader
+from src.spectre.model import SPECTRE
+from src.spectre.train import train
+from src.spectre.test import test
+from src.spectre.const import DATASET_ROOT, CODE_ROOT
+from src.dataset.spectre import SPECTREDataModule
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -51,7 +51,7 @@ if __name__ == "__main__":
     seed_everything(args.seed)
 
     # build a common results path
-    today = datetime.now().strftime("%Y-%m-%d")
+    today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     results_path = os.path.join(
         DATASET_ROOT, "results", args.experiment_name, today
     )
@@ -64,7 +64,7 @@ if __name__ == "__main__":
     if is_main_process() and args.train and not args.visualize:
         os.makedirs(results_path, exist_ok=True)
         logger = init_logger(results_path)
-        logger.info("[main] parsed args:\n%s", args)
+        logger.info("[Main] Parsed args:\n%s", args)
 
         # dump params.json
         with open(os.path.join(results_path, "params.json"), "w") as fp:
@@ -84,6 +84,7 @@ if __name__ == "__main__":
         wandb_run = None
 
     fp_loader = EntropyFPLoader()
+    fp_loader.setup(args.out_dim, 6)
     data_module = SPECTREDataModule(args, fp_loader)
     model = SPECTRE(args, fp_loader)
     

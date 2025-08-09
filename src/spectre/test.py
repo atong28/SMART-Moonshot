@@ -16,6 +16,7 @@ from ..dataset.spectre import SPECTREDataModule
 
 
 def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None):
+    model.setup_ranker()
     wandb_logger = WandbLogger(experiment=wandb_run)
     metric = 'val/mean_cos'
     ckpt_callback = cb.ModelCheckpoint(

@@ -17,7 +17,7 @@ class SPECTREArgs:
     requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(default_factory=lambda: [])
     
     debug: bool = False
-    batch_size: int = 128
+    batch_size: int = 32
     num_workers: int = 8
     epochs: int = 500
     patience: int = 30
