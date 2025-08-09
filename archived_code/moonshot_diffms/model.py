@@ -248,7 +248,7 @@ class Moonshot(pl.LightningModule):
             true_mols = [Chem.inchi.MolFromInchi(data.get_example(idx).inchi) for idx in range(len(data))] # Is this correct?
             predicted_mols = [list() for _ in range(len(data))]
             for _ in range(self.val_num_samples):
-                for idx, mol in enumerate(self.sample_batch(data)):
+                for idx, mol in enumerate(self.sample_batch(data, spec_emb)):
                     predicted_mols[idx].append(mol)
         
             for idx in range(len(data)):
@@ -338,7 +338,7 @@ class Moonshot(pl.LightningModule):
         true_mols = [Chem.inchi.MolFromInchi(data.get_example(idx).inchi) for idx in range(len(data))] # Is this correct?
         predicted_mols = [list() for _ in range(len(data))]
         for _ in range(self.test_num_samples):
-            for idx, mol in enumerate(self.sample_batch(data)):
+            for idx, mol in enumerate(self.sample_batch(data, spec_emb)):
                 predicted_mols[idx].append(mol)
 
         with open(f"preds/{self.name}_rank_{self.global_rank}_pred_{i}.pkl", "wb") as f:
@@ -573,7 +573,7 @@ class Moonshot(pl.LightningModule):
         return self.model(X, E, y, node_mask)
     
     @torch.no_grad()
-    def sample_batch(self, batch: Batch) -> list[Chem.Mol]:
+    def sample_batch(self, batch: Batch, spec_emb) -> list[Chem.Mol]:
         dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
 
         z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
@@ -589,7 +589,7 @@ class Moonshot(pl.LightningModule):
             t_norm = t_array / self.T
 
             # Sample z_s
-            sampled_s, __ = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
+            sampled_s, __ = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask, spec_emb)
             _, E, y = sampled_s.X, sampled_s.E, batch.y
 
         # Sample
@@ -604,7 +604,7 @@ class Moonshot(pl.LightningModule):
 
         return mols
 
-    def sample_p_zs_given_zt(self, s, t, X_t, E_t, y_t, node_mask):
+    def sample_p_zs_given_zt(self, s, t, X_t, E_t, y_t, node_mask, spec_emb):
         """Samples from zs ~ p(zs | zt). Only used during sampling.
            if last_step, return the graph prediction as well"""
         bs, n, dxs = X_t.shape
@@ -619,7 +619,7 @@ class Moonshot(pl.LightningModule):
 
         # Neural net predictions
         noisy_data = {'X_t': X_t, 'E_t': E_t, 'y_t': y_t, 't': t, 'node_mask': node_mask}
-        extra_data = self.compute_extra_data(noisy_data)
+        extra_data = self.compute_extra_data(noisy_data, spec_emb)
         pred = self.forward(noisy_data, extra_data, node_mask)
 
         # Normalize predictions

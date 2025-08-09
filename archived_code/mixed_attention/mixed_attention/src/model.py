@@ -145,14 +145,7 @@ class SPECTRE(pl.LightningModule):
         
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
-        if args.arch == 0:
-            self.fc = nn.Linear(self.dim_model, self.out_dim)
-        else:
-            self.fc = nn.Sequential(
-                nn.Linear(self.dim_model, 2048),
-                nn.ReLU(),
-                nn.Linear(2048, self.out_dim)
-            )
+        self.fc = nn.Linear(self.dim_model, self.out_dim)
         num_elem_tokens = len(ELEM2IDX) + 1    # +1 for PAD=0
         self.elem_embed = nn.Embedding(
             num_embeddings = num_elem_tokens,

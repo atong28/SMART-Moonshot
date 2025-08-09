@@ -465,7 +465,6 @@ class GraphTransformer(nn.Module):
         X, E, y = after_in.X, after_in.E, after_in.y
 
         for layer in self.tf_layers:
-            # X, E, y = cp.checkpoint(layer, X, E, y, node_mask)
             X, E, y = layer(X, E, y, node_mask)
 
         X = self.mlp_out_X(X)

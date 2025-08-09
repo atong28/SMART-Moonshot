@@ -84,14 +84,14 @@ class MoonshotArgs:
     decoder: str = None # path to pretrained decoder
     encoder: str = None # path to pretrained encoder
     resume: str = None
-    test_only: str = None
+    test_only: str = '/data/nas-gpu/wang/atong/SMART-Moonshot/moonshot/checkpoints/moonshot-devel/epoch=70.ckpt'
     load_weights: str = None
     encoder_finetune_strategy: Optional[Literal['freeze', 'ft-unfold', 'freeze-unfold', 'freeze-transformer', 'ft-transformer']] = None
     decoder_finetune_strategy: Optional[Literal['freeze', 'ft-input', 'freeze-input', 'ft-transformer', 'freeze-transformer', 'ft-output']] = None 
     check_val_every_n_epochs: int = 1
     sample_every_val: int = 1000
-    val_samples_to_generate: int = 100
-    test_samples_to_generate: int = 100
+    val_samples_to_generate: int = 10
+    test_samples_to_generate: int = 10
     log_every_steps: int = 50
     evaluate_all_checkpoints: bool = False
     checkpoint_strategy: str = 'last'

@@ -2,8 +2,8 @@ import argparse
 import os
 import json
 
-from .const import DO_NOT_OVERRIDE
-from .settings import Args
+from ..const import DO_NOT_OVERRIDE
+from .settings import SPECTREArgs
 
 def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):
     if default:
@@ -12,7 +12,7 @@ def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):
         parser.add_argument(f'--{name}', dest=name, action='store_true')
     parser.set_defaults(**{name: default})
 
-def parse_args(argv):
+def parse_args(argv) -> SPECTREArgs:
     parser = argparse.ArgumentParser(argv)
 
     parser.add_argument('--experiment_name')
@@ -28,20 +28,10 @@ def parse_args(argv):
 
     add_bool_flag(parser, 'debug', False)
     add_bool_flag(parser, 'persistent_workers', True)
-    add_bool_flag(parser, 'validate_all', False)
-    add_bool_flag(parser, 'use_cached_datasets', True)
-    add_bool_flag(parser, 'use_peak_values', False)
-    add_bool_flag(parser, 'save_params', True)
     add_bool_flag(parser, 'freeze_weights', False)
-    add_bool_flag(parser, 'use_jaccard', False)
-    add_bool_flag(parser, 'rank_by_soft_output', True)
-    add_bool_flag(parser, 'rank_by_test_set', False)
     add_bool_flag(parser, 'train', True)
     add_bool_flag(parser, 'test', True)
 
-    parser.add_argument('--model_mode', choices=['mixed_attention', 'moonshot_e2e'], required=True)
-    parser.add_argument('--fp_type', choices=['Entropy', 'HYUN', 'Normal'])
-    parser.add_argument('--fp_radius', type=int)
     parser.add_argument('--batch_size', type=int)
     parser.add_argument('--num_workers', type=int)
     parser.add_argument('--epochs', type=int)
@@ -55,10 +45,8 @@ def parse_args(argv):
     parser.add_argument('--ff_dim', type=int)
     parser.add_argument('--out_dim', type=int)
     parser.add_argument('--accumulate_grad_batches_num', type=int)
-    parser.add_argument('--arch', type=int)
-
+    
     parser.add_argument('--dropout', type=float)
-    parser.add_argument('--ranking_set_path')
 
     parser.add_argument('--lr', type=float)
     parser.add_argument('--noam_factor', type=float)
@@ -66,12 +54,8 @@ def parse_args(argv):
     parser.add_argument('--l1_decay', type=float)
     parser.add_argument('--scheduler', choices=['attention'])
     parser.add_argument('--warm_up_steps', type=int)
-    
-    add_bool_flag(parser, 'visualize', False)
 
     args = parser.parse_args()
-    model_mode = args.model_mode
-    delattr(args, 'model_mode')
     if args.load_from_checkpoint:
         checkpoint_dir = os.path.dirname(args.load_from_checkpoint)
         params_path = os.path.join(checkpoint_dir, 'params.json')
@@ -87,4 +71,4 @@ def parse_args(argv):
             setattr(args, k, v)
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
 
-    return Args(**args_dict), model_mode
+    return SPECTREArgs(**args_dict)

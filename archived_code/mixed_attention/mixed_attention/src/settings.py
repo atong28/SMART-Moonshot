@@ -46,7 +46,6 @@ class Args:
     ff_dim: int = 3072
     out_dim: int = 16384
     accumulate_grad_batches_num: int = 4
-    arch: int = 0
 
     c_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 400.0])
     h_wavelength_bounds: List[float] = field(default_factory=lambda: [0.01, 20.0])

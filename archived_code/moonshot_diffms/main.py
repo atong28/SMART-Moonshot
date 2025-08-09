@@ -61,6 +61,7 @@ if __name__ == '__main__':
         )
         logger = init_logger(results_path)
         logger.info(f'[Main] Config: {moonshot_args}')
+        moonshot_args.test_only = '/data/nas-gpu/wang/atong/SMART-Moonshot/moonshot/checkpoints/moonshot-devel/epoch=70.ckpt'
     else:
         moonshot_args = MoonshotArgs()
         spectre_path = moonshot_args.spectre_ckpt

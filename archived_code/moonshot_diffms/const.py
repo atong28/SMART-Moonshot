@@ -2,7 +2,7 @@ import re
 from rdkit import Chem
 from rdkit.Chem.rdchem import BondType as BT
 
-DEBUG_LEN = 3000
+DEBUG_LEN = 10
 
 DROP_MW_PERCENTAGE = 0.5
 DROP_MS_PERCENTAGE = 0.5
