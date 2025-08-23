@@ -218,3 +218,4 @@ spectre_ckpt/
 cache.pkl
 logs/
 checkpoints/
+old_ckpt/

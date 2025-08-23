@@ -9,8 +9,8 @@ from rdkit.Chem import rdFingerprintGenerator
 # DATASETS = ["OneD_Only_Dataset", "SMILES_dataset"]
 # DATASET_INDEX_SOURCE = ["oneD_NMR" , "HSQC"]
 RADIUS_UPPER_LIMIT = 10
-DATASET_ROOT = '/workspace'
-INFERENCE_ROOT = '/root/gurusmart/Moonshot/inference_data'
+DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDataset'
+INFERENCE_ROOT = '/data/nas-gpu/wang/atong/MoonshotDataset'
 gen = rdFingerprintGenerator.GetMorganGenerator(radius=RADIUS_UPPER_LIMIT)
 ao = rdFingerprintGenerator.AdditionalOutput()
 ao.AllocateBitInfoMap()

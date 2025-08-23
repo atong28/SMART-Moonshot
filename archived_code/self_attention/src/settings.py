@@ -6,8 +6,8 @@ from dataclasses import field
 class Args:
     experiment_name: str = 'spectre_reproduce'
     code_root: str = '/root/gurusmart/Moonshot/self_attention'
-    inference_root: str = '/root/gurusmart/Moonshot/inference_data'
-    data_root: str = '/workspace'
+    inference_root: str = '/data/nas-gpu/wang/atong/MoonshotDataset'
+    data_root: str = '/data/nas-gpu/wang/atong/MoonshotDataset'
     split: Literal['train', 'val', 'test'] = 'train'
     seed: int = 0
     load_from_checkpoint: str | None = None

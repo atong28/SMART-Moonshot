@@ -100,7 +100,7 @@ class SPECTRE(pl.LightningModule):
         self.training_step_outputs = []
         self.test_step_outputs = []
 
-        self.embedding = nn.Embedding(6, self.dim_model)
+        self.embedding = nn.Embedding(4, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
         self.latent = torch.nn.Parameter(torch.randn(1, 1, self.dim_model))
 

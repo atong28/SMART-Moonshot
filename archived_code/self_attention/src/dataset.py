@@ -327,7 +327,7 @@ class MoonshotDataModule(pl.LightningDataModule):
     def train_dataloader(self):
         return DataLoader(
             self.train,
-            shuffle=True,
+            # shuffle=True, temp override
             batch_size=self.batch_size,
             collate_fn=self.collate_fn,
             num_workers=self.num_workers,
