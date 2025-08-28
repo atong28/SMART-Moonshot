@@ -29,9 +29,6 @@ import wandb
 import numpy as np
 import random
 import torch
-from torch.nn.modules.transformer import _set_use_nested_tensor
-_set_use_nested_tensor(False)
-
 from src.spectre.core.args import parse_args
 from src.spectre.core.settings import SPECTREArgs
 from src.spectre.data.fp_loader import EntropyFPLoader
