@@ -8,9 +8,9 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.model_summary import summarize
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from .settings import SPECTREArgs
-from ..dataset.spectre import SPECTREDataModule
-from .model import SPECTRE
+from .core.settings import SPECTREArgs
+from .data.dataset import SPECTREDataModule
+from .arch.model import SPECTRE
 from .test import test
 
 def train(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, wandb_run = None):
@@ -45,9 +45,8 @@ def train(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, res
         strategy='ddp_find_unused_parameters_true',
         gradient_clip_val=1.0
     )
-    logger.info(f"[Main] Model Summary: {summarize(model)}")
     logger.info("[Main] Begin Training!")
-    trainer.fit(model, datamodule = data_module, ckpt_path=args.load_from_checkpoint)
+    trainer.fit(model, datamodule = data_module)
 
     # Ensure all processes synchronize before switching to test mode
     trainer.strategy.barrier()

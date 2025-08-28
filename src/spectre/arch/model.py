@@ -7,14 +7,15 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
-from .const import ELEM2IDX
-from .settings import SPECTREArgs
-from .utils import L1
-from .fp_loader import FPLoader
-from .encoder import build_encoder
-from .metrics import cm
-from .ranker import RankingSet
-from .lr_scheduler import NoamOpt
+from ..core.const import ELEM2IDX
+from ..core.settings import SPECTREArgs
+from ..core.utils import L1
+from ..core.metrics import cm
+from ..core.ranker import RankingSet
+from ..core.lr_scheduler import NoamOpt
+from ..data.fp_loader import FPLoader
+from ..data.encoder import build_encoder
+from .attention import MultiHeadAttentionCore
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -25,16 +26,15 @@ logger_should_sync_dist = torch.cuda.device_count() > 1
 
 class CrossAttentionBlock(nn.Module):
     """
-    Single cross‑attention + feed‑forward block.
-    Query attends to Key/Value (the spectral peaks).
+    Query (global CLS) attends to Key/Value (the spectral peaks + other tokens).
     """
     def __init__(self, dim_model, num_heads, ff_dim, dropout=0.1):
         super().__init__()
-        self.attn = nn.MultiheadAttention(
-            embed_dim=dim_model, 
-            num_heads=num_heads, 
+        self.attn = MultiHeadAttentionCore(
+            embed_dim=dim_model,
+            num_heads=num_heads,
             dropout=dropout,
-            batch_first=True    # so inputs are (B, L, D)
+            bias=True,
         )
         self.norm1 = nn.LayerNorm(dim_model)
         self.ff = nn.Sequential(
@@ -46,18 +46,15 @@ class CrossAttentionBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim_model)
 
     def forward(self, query, key, value, key_padding_mask=None):
-        # query: (B, Q, D); key/value: (B, S, D)
-        attn_out, _ = self.attn(
-            query=query, 
-            key=key, 
-            value=value, 
-            key_padding_mask=key_padding_mask
+        attn_out = self.attn(
+            query=query,
+            key=key,
+            value=value,
+            key_padding_mask=key_padding_mask,
         )
-        # residual + norm
         q1 = self.norm1(query + attn_out)
-        # feed‑forward + norm
         ff_out = self.ff(q1)
-        out  = self.norm2(q1 + ff_out)
+        out = self.norm2(q1 + ff_out)
         return out
 
 class SPECTRE(pl.LightningModule):

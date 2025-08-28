@@ -50,8 +50,50 @@ def parse_args() -> SPECTREArgs:
     parser.add_argument('--l1_decay', type=float)
     parser.add_argument('--scheduler', choices=['attention'])
     parser.add_argument('--warm_up_steps', type=int)
+    
+    # --- LoRA core ---
+    add_bool_flag(parser, 'train_lora', False)
+    parser.add_argument("--lora_rank_qkv", type=int,
+                        help="LoRA rank for Q/K/V projections in cross-attention (0 disables).")
+    parser.add_argument("--lora_rank_out", type=int,
+                        help="LoRA rank for attention output projection (0 disables).")
+    parser.add_argument("--lora_rank_fc", type=int,
+                        help="LoRA rank for final fc head (0 disables).")
+
+    parser.add_argument("--lora_scale_qkv", type=float,
+                        help="Scaling alpha for Q/K/V LoRA delta.")
+    parser.add_argument("--lora_scale_out", type=float,
+                        help="Scaling alpha for attention out LoRA delta.")
+    parser.add_argument("--lora_scale_fc", type=float,
+                        help="Scaling alpha for fc LoRA delta.")
+
+    add_bool_flag(parser, 'lora_enable_attn', True)
+    add_bool_flag(parser, 'lora_enable_fc', True)
+    add_bool_flag(parser, 'lora_enable_self_attn', False)
+
+    # --- Adapter training / mgmt ---
+    parser.add_argument("--adapter_dir", type=str,
+                        help="Directory to save/load LoRA-only adapter files.")
+    parser.add_argument("--train_adapter_for_combo", nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula'],
+                        help="Canonical combo key to train an adapter for (e.g., 'c_nmr+hsqc+mw'). Empty = normal training.")
+
+    add_bool_flag(parser, 'lora_only', True)
+    parser.add_argument("--lora_lr", type=float,
+                        help="Learning rate for LoRA params.")
+    parser.add_argument("--lora_weight_decay", type=float,
+                        help="Weight decay for LoRA params.")
+
+    parser.add_argument("--full_mix_ratio", type=float,
+                        help="Fraction of full-modality batches mixed in during adapter training (0..1).")
+    parser.add_argument("--distill_full_alpha", type=float,
+                        help="Weight of distillation loss on full-modality batches (protects full-data behavior).")
+    parser.add_argument("--distill_target", type=str, choices=["logits", "embedding"],
+                        help="Distill base behavior using logits or CLS embeddings on full-modality batches.")
+
 
     args = parser.parse_args()
+    if args.train_lora:
+        assert args.train_adapter_for_combo is not None, 'Must select a combo to train the adapter on!'
     if args.load_from_checkpoint:
         checkpoint_dir = os.path.dirname(args.load_from_checkpoint)
         params_path = os.path.join(checkpoint_dir, 'params.json')

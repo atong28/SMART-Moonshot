@@ -1,6 +1,8 @@
 import os
+import json
+import sys
 import pickle
-
+from datetime import datetime
 import wandb
 import numpy as np
 import pandas as pd
@@ -10,12 +12,14 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning.callbacks as cb
 import pytorch_lightning as pl
 
-from .settings import SPECTREArgs
-from .model import SPECTRE
-from ..dataset.spectre import SPECTREDataModule
+from .core.settings import SPECTREArgs
+from .arch.model import SPECTRE
+from .data.dataset import SPECTREDataModule
 
 
-def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None):
+def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
+    if not os.path.exists(results_path):
+        os.makedirs(results_path, exist_ok=True)
     model.setup_ranker()
     wandb_logger = WandbLogger(experiment=wandb_run)
     metric = 'val/mean_cos'
@@ -40,3 +44,8 @@ def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, resu
     test_result = trainer.test(model, data_module, ckpt_path=ckpt_path)
     with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
         pickle.dump(test_result, f)
+        
+    result = test_result[0] if isinstance(test_result, list) and test_result and isinstance(test_result[0], dict) else {}
+
+    if sweep:
+        return result

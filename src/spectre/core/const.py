@@ -38,7 +38,13 @@ UNK_IDX = len(ELEMENT_VOCAB) + 1
 # regex to split element symbols (1 or 2 letters) and optional count
 FORMULA_RE = re.compile(r'([A-Z][a-z]?)(\d*)')
 
-DO_NOT_OVERRIDE = ['train', 'test', 'visualize', 'load_from_checkpoint']
+DO_NOT_OVERRIDE = [
+    'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires', 'train_lora',
+    'lora_rank_qkv', 'lora_rank_out', 'lora_rank_fc', 'lora_scale_qkv', 'lora_scale_out',
+    'lora_scale_fc', 'lora_enable_attn', 'lora_enable_fc', 'adapter_dir', 'train_adapter_for_combo',
+    'lora_only', 'lora_lr', 'lora_weight_decay', 'full_mix_ratio', 'distill_full_alpha',
+    'distill_target'
+]
 
 ATOM_DECODER = ['C', 'N', 'O', 'S', 'P', 'F', 'Cl', 'Br', 'I', 'H']
 FILTER_ATOMS = set(ATOM_DECODER)

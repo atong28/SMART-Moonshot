@@ -57,3 +57,28 @@ class SPECTREArgs:
     use_jaccard: bool = False
 
     visualize: bool = False
+    
+    # LoRA core
+    train_lora: bool = False
+    lora_rank_qkv: int = 8
+    lora_rank_out: int = 8
+    lora_rank_fc: int = 4
+    lora_scale_qkv: float = 1.0
+    lora_scale_out: float = 1.0
+    lora_scale_fc: float = 1.0
+    lora_enable_attn: bool = True
+    lora_enable_fc: bool = True
+    lora_enable_self_attn: bool = False
+
+    # Adapter training
+    adapter_dir: str = "adapters"
+    train_adapter_for_combo: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
+        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']
+    )
+    lora_only: bool = True
+    lora_lr: float = 1e-3
+    lora_weight_decay: float = 0.0
+    full_mix_ratio: float = 0.2
+    distill_full_alpha: float = 0.1
+    distill_target: str = "logits"  # or "embedding"
+

@@ -12,9 +12,9 @@ from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
-from ..spectre.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
-from ..spectre.settings import SPECTREArgs
-from ..spectre.fp_loader import FPLoader
+from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
+from ..core.settings import SPECTREArgs
+from .fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
 
 logger = logging.getLogger('lightning')
@@ -46,7 +46,7 @@ class SPECTREDataset(Dataset):
                 if all(entry[f'has_{dtype}'] for dtype in self.requires)
             }
             logger.info(f'[SPECTREDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
-            
+            print(f'[SPECTREDataset] Dataset size: {len(data)}')
             if args.debug and len(data) > DEBUG_LEN:
                 logger.info(f'[SPECTREDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
                 data = dict(islice(data.items(), DEBUG_LEN))
