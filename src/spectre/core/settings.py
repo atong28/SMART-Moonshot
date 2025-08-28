@@ -82,3 +82,6 @@ class SPECTREArgs:
     distill_full_alpha: float = 0.1
     distill_target: str = "logits"  # or "embedding"
 
+    # hybrid loss
+    hybrid_loss: bool = False
+    lambda_bce: float = 0.6

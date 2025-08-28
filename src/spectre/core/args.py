@@ -89,6 +89,9 @@ def parse_args() -> SPECTREArgs:
                         help="Weight of distillation loss on full-modality batches (protects full-data behavior).")
     parser.add_argument("--distill_target", type=str, choices=["logits", "embedding"],
                         help="Distill base behavior using logits or CLS embeddings on full-modality batches.")
+    
+    add_bool_flag(parser, "hybrid_loss", False)
+    parser.add_argument("--lambda_bce", type=float)
 
 
     args = parser.parse_args()

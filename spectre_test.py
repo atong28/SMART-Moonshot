@@ -12,13 +12,13 @@ import numpy as np
 import random
 import torch
 
-from src.spectre.args import parse_args
-from src.spectre.settings import SPECTREArgs
-from src.spectre.fp_loader import EntropyFPLoader
-from src.spectre.model import SPECTRE
+from src.spectre.core.args import parse_args
+from src.spectre.core.settings import SPECTREArgs
+from src.spectre.data.fp_loader import EntropyFPLoader
+from src.spectre.arch.model import SPECTRE
 from src.spectre.test import test
-from src.spectre.const import DATASET_ROOT, CODE_ROOT
-from src.dataset.spectre import SPECTREDataModule
+from src.spectre.core.const import DATASET_ROOT, CODE_ROOT
+from src.spectre.data.dataset import SPECTREDataModule
 
 # ----------------------------
 # Combos (as you specified)

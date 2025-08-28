@@ -16,6 +16,7 @@ from ..core.lr_scheduler import NoamOpt
 from ..data.fp_loader import FPLoader
 from ..data.encoder import build_encoder
 from .attention import MultiHeadAttentionCore
+from .bce_hybrid_loss import BCECosineHybridLoss
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -144,11 +145,10 @@ class SPECTRE(pl.LightningModule):
         )
         self.cnt_embed = nn.Linear(1, self.dim_model)
 
-
-        self.bce_pos_weight = None
-        logger.info("[SPECTRE] bce_pos_weight = None")
-
-        self.loss = nn.BCEWithLogitsLoss(pos_weight=self.bce_pos_weight)
+        if args.hybrid_loss:
+            self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_bce)
+        else:
+            self.loss = nn.BCEWithLogitsLoss()
 
         self.validation_step_outputs: List[Dict[str, Any]] = []
         self.test_step_outputs: List[Dict[str, Any]] = []

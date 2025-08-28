@@ -40,36 +40,12 @@ from src.spectre.lora.spectre_lora import SPECTRELoRA
 from src.spectre.lora.load_utils import load_base_ckpt_into_lora_model
 from src.spectre.data.dataset import SPECTREDataModule
 
-
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
     random.seed(seed)
-
-# -------------------------------
-# Helpers
-# -------------------------------
-def _parse_combo(x):
-    """
-    Accepts: "hsqc", "hsqc,h_nmr", "{hsqc,h_nmr}", ["hsqc","h_nmr"]
-    Returns: list[str]
-    """
-    if isinstance(x, (list, tuple)):
-        toks = [str(t).strip().lower() for t in x]
-    else:
-        s = str(x).strip()
-        if s.startswith("{") and s.endswith("}"):
-            s = s[1:-1]
-        toks = [t.strip().lower() for t in s.split(",")] if "," in s else [s.lower()]
-    # dedupe, preserve order
-    seen, out = set(), []
-    for t in toks:
-        if t and t not in seen:
-            seen.add(t)
-            out.append(t)
-    return out
 
 def main():
     args: SPECTREArgs = parse_args()
