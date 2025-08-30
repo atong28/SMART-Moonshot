@@ -12,7 +12,7 @@ class SPECTREArgs:
     test: bool = True
     
     input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
-        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']
+        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
     )
     requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(default_factory=lambda: [])
     
@@ -73,7 +73,7 @@ class SPECTREArgs:
     # Adapter training
     adapter_dir: str = "adapters"
     train_adapter_for_combo: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
-        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']
+        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
     )
     lora_only: bool = True
     lora_lr: float = 1e-3
@@ -83,5 +83,7 @@ class SPECTREArgs:
     distill_target: str = "logits"  # or "embedding"
 
     # hybrid loss
-    hybrid_loss: bool = False
-    lambda_bce: float = 0.6
+    lambda_hybrid: float = 0
+
+    # fingerprint type
+    fp_type: Literal['RankingEntropy', 'RankingBalanced', 'RankingSuperclass', 'RankingGlobal'] = 'RankingEntropy'

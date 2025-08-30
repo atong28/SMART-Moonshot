@@ -1,5 +1,7 @@
+from typing import Optional
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import numpy as np
 from torchmetrics.classification import (
     BinaryRecall,
@@ -26,7 +28,7 @@ do_recall = BinaryRecall()
 do_precision = BinaryPrecision()
 do_accuracy = BinaryAccuracy()
 
-
+@torch.no_grad()
 def cm(
     model_output: torch.Tensor,
     fp_label: torch.Tensor,
@@ -119,3 +121,54 @@ def cm(
         "mean_rank": mean_rank,
         **ranks,
     }, rank_res.view(-1)
+
+@torch.no_grad()
+def cm_tfidf(
+    model_output: torch.Tensor,      # (Q, D) real-valued logits (no sigmoid)
+    fp_label: torch.Tensor,          # (Q, D) real-valued TF–IDF targets
+    ranker: RankingSet,
+    loss: torch.Tensor,
+    query_idx_in_rankingset: Optional[torch.Tensor] = None,
+    no_ranking: bool = False,
+):
+    """
+    Metrics for real-valued (TF–IDF) fingerprints.
+
+    - Cosine diagnostic between predicted and target vectors
+    - Optional retrieval ranks via cosine against `ranker.data`
+    - Returns: (metrics_dict, rank_counts or None)
+    """
+    # Cosine diagnostic (prediction vs target)
+    qn = F.normalize(model_output, dim=1, p=2.0)
+    tn = F.normalize(fp_label,    dim=1, p=2.0)
+    cos_diag = torch.sum(qn * tn, dim=1).mean().item()
+
+    # Simple density diagnostics (useful to watch)
+    pred_nz = (model_output != 0).float().sum(dim=1).mean().item()
+    targ_nz = (fp_label    != 0).float().sum(dim=1).mean().item()
+
+    base = {
+        "ce_loss": loss.item(),       # keep key name consistent with your logs
+        "cos": cos_diag,
+        "pred_nonzeros": pred_nz,
+        "targ_nonzeros": targ_nz,
+    }
+    if no_ranking:
+        return base, None
+
+    # Retrieval (cosine); RankingSet normalizes queries internally
+    rank_res = ranker.batched_rank(
+        queries=model_output,
+        truths=fp_label,
+        query_idx_in_rankingset=query_idx_in_rankingset,  # keep None unless you know exact rows
+        use_jaccard=False,
+    )  # (Q,) int32  — 0 means top-1
+
+    rank_res_f = rank_res.float()
+    ranks = {
+        "mean_rank": rank_res_f.mean().item(),
+        "rank_1":   (rank_res_f < 1).float().mean().item(),
+        "rank_5":   (rank_res_f < 5).float().mean().item(),
+        "rank_10":  (rank_res_f < 10).float().mean().item(),
+    }
+    return {**base, **ranks}, rank_res

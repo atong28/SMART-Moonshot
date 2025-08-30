@@ -31,7 +31,7 @@ import random
 import torch
 from src.spectre.core.args import parse_args
 from src.spectre.core.settings import SPECTREArgs
-from src.spectre.data.fp_loader import EntropyFPLoader
+from src.spectre.data.fp_loader import make_fp_loader
 from src.spectre.arch.model import SPECTRE
 from src.spectre.train import train
 from src.spectre.test import test
@@ -96,8 +96,7 @@ def main():
     if args.train_lora:
         if not args.load_from_checkpoint:
             raise ValueError("--train_lora requires --load_from_checkpoint to be set to a base checkpoint")
-        fp_loader = EntropyFPLoader()
-        fp_loader.setup(args.out_dim, 6)
+        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
         model = SPECTRELoRA(args, fp_loader)
         info = load_base_ckpt_into_lora_model(model, args.load_from_checkpoint)
         if is_main_process() and logger:
@@ -113,8 +112,7 @@ def main():
         args.requires = args.train_adapter_for_combo
         data_module = SPECTREDataModule(args, fp_loader)
     else:
-        fp_loader = EntropyFPLoader()
-        fp_loader.setup(args.out_dim, 6)
+        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
         model = SPECTRE(args, fp_loader)
         data_module = SPECTREDataModule(args, fp_loader)
 

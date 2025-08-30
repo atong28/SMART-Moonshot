@@ -2,10 +2,14 @@ import pickle
 import numpy as np
 import torch
 import os
+import json
 import time
+from typing import Tuple, Optional
 
 from ..core.const import DATASET_ROOT, CODE_ROOT
 from .fp_utils import compute_entropy, count_circular_substructures
+
+Feature = Tuple[int, str, str, int]  # (bit_id, atom_symbol, frag_smiles, radius)
 
 class FPLoader:
     def __init__(self) -> None:
@@ -17,7 +21,7 @@ class FPLoader:
     def build_mfp(self, idx: int) -> torch.Tensor:
         raise NotImplementedError()
     
-    def load_rankingset(self):
+    def load_rankingset(self, fp_type: str):
         raise NotImplementedError()
 
 class EntropyFPLoader(FPLoader):
@@ -89,6 +93,62 @@ class EntropyFPLoader(FPLoader):
                     mfp[self.bitInfos_to_fp_index_map[bitInfo]] = 1
         return torch.tensor(mfp).float()
     
-    def load_rankingset(self):
-        rankingset_path = os.path.join(DATASET_ROOT, 'rankingset.pt')
+    def load_rankingset(self, fp_type: str):
+        rankingset_path = os.path.join(DATASET_ROOT, fp_type, 'rankingset.pt')
         return torch.load(rankingset_path, weights_only=True)
+
+# data/fp_loader.py  (add this class)
+
+class IRFPFPLoader:
+    """
+    Loads precomputed TF-IDF fingerprints saved per-idx at:
+      DATASET_ROOT/{fp_type}/fp/{idx}.pt  (float32)
+
+    Also exposes load_rankingset(fp_type) that returns the row-normalized bank.
+    """
+    def __init__(self, fp_type: str):
+        self.fp_type = fp_type
+        self.root = os.path.join(DATASET_ROOT, fp_type)
+        self.fp_dir = os.path.join(self.root, "fp")
+        os.makedirs(self.fp_dir, exist_ok=True)
+
+    def build_mfp(self, idx: int) -> torch.Tensor:
+        """
+        Return the (D,) float32 TF-IDF vector for this idx, as saved by materializer.
+        """
+        path = os.path.join(self.fp_dir, f"{idx}.pt")
+        if not os.path.exists(path):
+            raise FileNotFoundError(f"Missing per-idx fp: {path}. Run materialize_irfp_per_idx.py.")
+        return torch.load(path, weights_only=True).to(torch.float32)
+
+    def load_rankingset(self, fp_type: Optional[str] = None) -> torch.Tensor:
+        """
+        Row-normalized (N, D) tensor for fast cosine ranking.
+        Falls back to fingerprints.pt + on-the-fly row L2 if rankingset.pt is missing.
+        """
+        root = self.root if fp_type is None else os.path.join(DATASET_ROOT, fp_type)
+        rs_path = os.path.join(root, "rankingset.pt")
+        if os.path.exists(rs_path):
+            return torch.load(rs_path, weights_only=True).to(torch.float32)
+        # Fallback
+        fps = torch.load(os.path.join(root, "fingerprints.pt"), weights_only=True).to(torch.float32)
+        norms = torch.linalg.norm(fps, dim=1, keepdim=True).clamp_min(1e-12)
+        return fps / norms
+
+    # Optional helpers
+    def get_out_dim(self) -> int:
+        with open(os.path.join(self.root, "meta.pkl"), "rb") as f:
+            meta = pickle.load(f)
+        return int(meta["D_total"])
+
+    def smiles_to_idx(self) -> dict:
+        p = os.path.join(self.root, "smiles_to_idx.json")
+        return json.load(open(p)) if os.path.exists(p) else {}
+
+def make_fp_loader(fp_type: str, entropy_out_dim = 16384):
+    if fp_type == "RankingEntropy":
+        fp_loader = EntropyFPLoader()
+        fp_loader.setup(entropy_out_dim, 6)
+        return fp_loader
+    else:
+        return IRFPFPLoader(fp_type)

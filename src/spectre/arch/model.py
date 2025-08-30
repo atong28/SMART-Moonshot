@@ -4,19 +4,21 @@ import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.distributed as dist
+import torch.nn.functional as F
 from collections import defaultdict
 import numpy as np
 
 from ..core.const import ELEM2IDX
 from ..core.settings import SPECTREArgs
 from ..core.utils import L1
-from ..core.metrics import cm
+from ..core.metrics import cm, cm_tfidf
 from ..core.ranker import RankingSet
 from ..core.lr_scheduler import NoamOpt
 from ..data.fp_loader import FPLoader
 from ..data.encoder import build_encoder
 from .attention import MultiHeadAttentionCore
 from .bce_hybrid_loss import BCECosineHybridLoss
+from .mse_hybrid_loss import MSECosineHybridLoss
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -24,6 +26,9 @@ if dist.is_initialized():
     if rank != 0:
         logger.setLevel(logging.WARNING)
 logger_should_sync_dist = torch.cuda.device_count() > 1
+
+def is_binary_fp(fp_type: str) -> bool:
+    return fp_type == "RankingEntropy"
 
 class CrossAttentionBlock(nn.Module):
     """
@@ -145,10 +150,11 @@ class SPECTRE(pl.LightningModule):
         )
         self.cnt_embed = nn.Linear(1, self.dim_model)
 
-        if args.hybrid_loss:
-            self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_bce)
+        self.fp_mode_binary = is_binary_fp(self.args.fp_type)
+        if self.fp_mode_binary:
+            self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
         else:
-            self.loss = nn.BCEWithLogitsLoss()
+            self.loss = MSECosineHybridLoss(lambda_mse = args.lambda_hybrid)
 
         self.validation_step_outputs: List[Dict[str, Any]] = []
         self.test_step_outputs: List[Dict[str, Any]] = []
@@ -246,10 +252,17 @@ class SPECTRE(pl.LightningModule):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        metrics, _ = cm(
-            logits, fps, self.ranker, loss, self.loss, thresh=0.0, 
-            query_idx_in_rankingset=batch_idx, no_ranking = True
-        )
+        if self.fp_mode_binary:
+            # keep your old cm() path
+            metrics, _ = cm(
+                logits, fps, self.ranker, loss, self.loss,
+                thresh=0.0, query_idx_in_rankingset=batch_idx, no_ranking=True
+            )
+        else:
+            metrics, _ = cm_tfidf(
+                logits, fps, self.ranker, loss,
+                query_idx_in_rankingset=None, no_ranking=True
+            )
         self.validation_step_outputs.append(metrics)
         return metrics
     
@@ -257,10 +270,16 @@ class SPECTRE(pl.LightningModule):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        metrics, _ = cm(
-            logits, fps, self.ranker, loss, self.loss, thresh=0.0, 
-            query_idx_in_rankingset=batch_idx, no_ranking = False
-        )
+        if self.fp_mode_binary:
+            metrics, _ = cm(
+                logits, fps, self.ranker, loss, self.loss,
+                thresh=0.0, query_idx_in_rankingset=None, no_ranking=False
+            )
+        else:
+            metrics, _ = cm_tfidf(
+                logits, fps, self.ranker, loss,
+                query_idx_in_rankingset=None, no_ranking=False
+            )
         self.test_step_outputs.append(metrics)
         return metrics
 
@@ -315,4 +334,4 @@ class SPECTRE(pl.LightningModule):
         super().log(name, value, *args, **kwargs)
 
     def setup_ranker(self):
-        self.ranker = RankingSet(store=self.fp_loader.load_rankingset())
+        self.ranker = RankingSet(store=self.fp_loader.load_rankingset(self.args.fp_type))

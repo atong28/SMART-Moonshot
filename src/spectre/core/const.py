@@ -22,7 +22,7 @@ FP_RADIUS = 6
 if 'nas-gpu' in __file__:
     print('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
-    DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDataset'
+    DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv2'
 else:
     print('Detected nautilus setup')
     CODE_ROOT = '/root/gurusmart/Moonshot'
