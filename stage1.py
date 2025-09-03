@@ -33,12 +33,15 @@ from src.spectre.core.args import parse_args
 from src.spectre.core.settings import SPECTREArgs
 from src.spectre.data.fp_loader import make_fp_loader
 from src.spectre.arch.model import SPECTRE
+from src.spectre.archv2.model import SPECTREv2
 from src.spectre.train import train
 from src.spectre.test import test
 from src.spectre.core.const import DATASET_ROOT, CODE_ROOT
 from src.spectre.lora.spectre_lora import SPECTRELoRA
 from src.spectre.lora.load_utils import load_base_ckpt_into_lora_model
 from src.spectre.data.dataset import SPECTREDataModule
+
+torch.autograd.set_detect_anomaly(True)
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -94,6 +97,7 @@ def main():
     # Model construction branches
     # ----------------------------
     if args.train_lora:
+        assert args.arch == 'v1', 'LoRA not supported for v2'
         if not args.load_from_checkpoint:
             raise ValueError("--train_lora requires --load_from_checkpoint to be set to a base checkpoint")
         fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
@@ -113,7 +117,10 @@ def main():
         data_module = SPECTREDataModule(args, fp_loader)
     else:
         fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
-        model = SPECTRE(args, fp_loader)
+        if args.arch == 'v1':
+            model = SPECTRE(args, fp_loader)
+        elif args.arch == 'v2':
+            model = SPECTREv2(args, fp_loader)
         data_module = SPECTREDataModule(args, fp_loader)
 
     # ----------------------------

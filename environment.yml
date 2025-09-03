@@ -161,6 +161,7 @@ dependencies:
       - astunparse==1.6.3
       - async-lru==2.0.4
       - babel==2.16.0
+      - biosynfoni==1.0.0
       - bleach==6.2.0
       - blinker==1.9.0
       - colorlog==6.9.0

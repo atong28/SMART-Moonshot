@@ -91,7 +91,8 @@ def parse_args() -> SPECTREArgs:
                         help="Distill base behavior using logits or CLS embeddings on full-modality batches.")
 
     parser.add_argument("--lambda_hybrid", type=float)
-    parser.add_argument("--fp_type", type=str, choices=['RankingEntropy', 'RankingSuperclass', 'RankingGlobal', 'RankingBalanced'])
+    parser.add_argument("--fp_type", type=str, choices=['RankingEntropy', 'RankingSuperclass', 'RankingGlobal', 'RankingBalanced', 'Biosynfoni'])
+    parser.add_argument("--arch", type=str, choices=['v1', 'v2'])
 
     args = parser.parse_args()
     if args.train_lora:

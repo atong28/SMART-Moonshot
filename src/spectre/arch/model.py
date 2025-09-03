@@ -19,6 +19,7 @@ from ..data.encoder import build_encoder
 from .attention import MultiHeadAttentionCore
 from .bce_hybrid_loss import BCECosineHybridLoss
 from .mse_hybrid_loss import MSECosineHybridLoss
+from .mse_tani_loss import MSETanimotoHybridLoss
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -29,6 +30,12 @@ logger_should_sync_dist = torch.cuda.device_count() > 1
 
 def is_binary_fp(fp_type: str) -> bool:
     return fp_type == "RankingEntropy"
+
+def is_tfidf_fp(fp_type: str) -> bool:
+    return fp_type in {"RankingBalanced", "RankingGlobal", "RankingSuperclass"}
+
+def is_count_fp(fp_type: str) -> bool:
+    return fp_type == "Biosynfoni"
 
 class CrossAttentionBlock(nn.Module):
     """
@@ -151,8 +158,13 @@ class SPECTRE(pl.LightningModule):
         self.cnt_embed = nn.Linear(1, self.dim_model)
 
         self.fp_mode_binary = is_binary_fp(self.args.fp_type)
+        self.fp_mode_tfidf  = is_tfidf_fp(self.args.fp_type)
+        self.fp_mode_count  = is_count_fp(self.args.fp_type)
         if self.fp_mode_binary:
             self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
+        elif self.fp_mode_count:
+            self.fp_activation = nn.Softplus()
+            self.loss = MSETanimotoHybridLoss(lambda_mse=args.lambda_hybrid)
         else:
             self.loss = MSECosineHybridLoss(lambda_mse = args.lambda_hybrid)
 
@@ -236,6 +248,8 @@ class SPECTRE(pl.LightningModule):
 
         # 7. Final projection
         out = self.fc(global_token.squeeze(1))  # (B, out_dim)
+        if self.fp_mode_count:
+            out = self.fp_activation(out)
 
         if return_representations:
             return global_token.squeeze(1).detach().cpu().numpy()
@@ -334,4 +348,10 @@ class SPECTRE(pl.LightningModule):
         super().log(name, value, *args, **kwargs)
 
     def setup_ranker(self):
-        self.ranker = RankingSet(store=self.fp_loader.load_rankingset(self.args.fp_type))
+        store = self.fp_loader.load_rankingset(self.args.fp_type)
+        if self.fp_mode_count:
+            metric = "tanimoto"
+        else:
+            metric = "cosine"
+
+        self.ranker = RankingSet(store=store, metric=metric)

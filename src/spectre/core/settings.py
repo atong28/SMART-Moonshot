@@ -83,7 +83,9 @@ class SPECTREArgs:
     distill_target: str = "logits"  # or "embedding"
 
     # hybrid loss
-    lambda_hybrid: float = 0
+    lambda_hybrid: float = 0.0
 
     # fingerprint type
-    fp_type: Literal['RankingEntropy', 'RankingBalanced', 'RankingSuperclass', 'RankingGlobal'] = 'RankingEntropy'
+    fp_type: Literal['RankingEntropy', 'RankingBalanced', 'RankingSuperclass', 'RankingGlobal', 'Biosynfoni'] = 'RankingEntropy'
+    
+    arch: Literal['v1', 'v2'] = 'v1'

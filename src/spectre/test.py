@@ -14,10 +14,11 @@ import pytorch_lightning as pl
 
 from .core.settings import SPECTREArgs
 from .arch.model import SPECTRE
+from .archv2.model import SPECTREv2
 from .data.dataset import SPECTREDataModule
 
 
-def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
+def test(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE | SPECTREv2, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
     if not os.path.exists(results_path):
         os.makedirs(results_path, exist_ok=True)
     model.setup_ranker()

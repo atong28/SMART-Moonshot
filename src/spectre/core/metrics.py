@@ -40,12 +40,7 @@ def cm(
     no_ranking: bool = False,
 ):
     """
-    Compute core fingerprint metrics + retrieval ranks.
-
-    Assumptions:
-      - rank_by_soft_output == True      -> queries = sigmoid(model_output)
-      - use_jaccard == False             -> cosine-based ranking
-      - mw/use_actual_mw_for_retrieval == None (unused)
+    Binary FP metrics + retrieval via cosine.
     """
     global do_f1, do_recall, do_precision, do_accuracy
 
@@ -84,9 +79,8 @@ def cm(
     pos_loss = loss_fn(pos_contr, fp_label)
     neg_loss = loss_fn(neg_contr, fp_label)
 
-    # Early exit if ranking is disabled
     base_metrics = {
-        "ce_loss": loss.item(),
+        "loss": loss.item(),
         "pos_loss": pos_loss.item(),
         "neg_loss": neg_loss.item(),
         "pos_neg_loss": (pos_loss + neg_loss).item(),
@@ -101,8 +95,7 @@ def cm(
     if no_ranking:
         return base_metrics, None
 
-    # === Retrieval ranking ===
-    # rank_by_soft_output is assumed True → use probabilities for queries; cosine mode
+    # Retrieval: use probabilities for queries; cosine mode
     queries = torch.sigmoid(model_output)
     rank_res = ranker.batched_rank(
         queries=queries,
@@ -111,7 +104,6 @@ def cm(
         use_jaccard=False,
     )
 
-    # "Top-k" success: how often count of items >= threshold (minus 1) is < k
     cts = [1, 5, 10]
     ranks = {f"rank_{k}": (rank_res < k).float().mean().item() for k in cts}
     mean_rank = rank_res.float().mean().item()
@@ -122,47 +114,74 @@ def cm(
         **ranks,
     }, rank_res.view(-1)
 
+# --------- Tanimoto helpers for dense, nonnegative real vectors ---------
+
+def _tanimoto_pairwise(a: torch.Tensor, b: torch.Tensor, eps: float = 1e-12) -> torch.Tensor:
+    """
+    Row-wise Tanimoto similarity between A and B (same shape), nonnegative inputs.
+    T(a,b) = (a·b) / (||a||^2 + ||b||^2 - a·b)
+    Returns (Q,)
+    """
+    ab = torch.sum(a * b, dim=1)
+    aa = torch.sum(a * a, dim=1)
+    bb = torch.sum(b * b, dim=1)
+    denom = (aa + bb - ab).clamp_min(eps)
+    return (ab / denom).clamp_min(0.0)
+
 @torch.no_grad()
 def cm_tfidf(
-    model_output: torch.Tensor,      # (Q, D) real-valued logits (no sigmoid)
-    fp_label: torch.Tensor,          # (Q, D) real-valued TF–IDF targets
+    model_output: torch.Tensor,      # (Q, D) real-valued predictions (no sigmoid)
+    fp_label: torch.Tensor,          # (Q, D) real-valued targets
     ranker: RankingSet,
     loss: torch.Tensor,
     query_idx_in_rankingset: Optional[torch.Tensor] = None,
     no_ranking: bool = False,
 ):
     """
-    Metrics for real-valued (TF–IDF) fingerprints.
+    Metrics for real-valued fingerprints (TF–IDF / log-count).
 
-    - Cosine diagnostic between predicted and target vectors
-    - Optional retrieval ranks via cosine against `ranker.data`
-    - Returns: (metrics_dict, rank_counts or None)
+    Diagnostics mirror the ranker metric:
+      - cosine: cosine(pred, target)
+      - tanimoto: tanimoto(pred, target)
+
+    Retrieval uses ranker.batched_rank() (ranker decides cosine vs tanimoto).
     """
-    # Cosine diagnostic (prediction vs target)
-    qn = F.normalize(model_output, dim=1, p=2.0)
-    tn = F.normalize(fp_label,    dim=1, p=2.0)
-    cos_diag = torch.sum(qn * tn, dim=1).mean().item()
+    metric = getattr(ranker, "metric", "cosine")
 
-    # Simple density diagnostics (useful to watch)
+    # Diagnostics (prediction vs target)
+    if metric == "tanimoto":
+        # Inputs should be nonnegative (log1p counts are). If not, clamp.
+        q = torch.clamp(model_output, min=0)
+        t = torch.clamp(fp_label,     min=0)
+        sim_diag = _tanimoto_pairwise(q, t).mean().item()
+        diag_key = "tanimoto"
+    else:
+        # cosine
+        qn = F.normalize(model_output, dim=1, p=2.0)
+        tn = F.normalize(fp_label,    dim=1, p=2.0)
+        sim_diag = torch.sum(qn * tn, dim=1).mean().item()
+        diag_key = "cos"
+
+    # Density diagnostics
     pred_nz = (model_output != 0).float().sum(dim=1).mean().item()
     targ_nz = (fp_label    != 0).float().sum(dim=1).mean().item()
 
     base = {
-        "ce_loss": loss.item(),       # keep key name consistent with your logs
-        "cos": cos_diag,
+        "ce_loss": loss.item(),   # keep key for continuity
+        diag_key: sim_diag,
         "pred_nonzeros": pred_nz,
         "targ_nonzeros": targ_nz,
     }
     if no_ranking:
         return base, None
 
-    # Retrieval (cosine); RankingSet normalizes queries internally
+    # Retrieval (ranker handles metric & normalization internally)
     rank_res = ranker.batched_rank(
         queries=model_output,
         truths=fp_label,
-        query_idx_in_rankingset=query_idx_in_rankingset,  # keep None unless you know exact rows
+        query_idx_in_rankingset=query_idx_in_rankingset,
         use_jaccard=False,
-    )  # (Q,) int32  — 0 means top-1
+    )  # (Q,)
 
     rank_res_f = rank_res.float()
     ranks = {
