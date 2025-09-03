@@ -47,11 +47,12 @@ class SPECTREArgs:
     save_params: bool = True
 
     # training args
-    lr: float = 5e-5
+    lr: float = 2e-4
+    eta_min: float = 6e-6
     noam_factor: float = 1.0
     weight_decay: float = 0.0
     l1_decay: float = 0.0
-    scheduler: Optional[Literal['attention']] = None
+    scheduler: Optional[Literal['attention', 'cosine']] = 'cosine'
     warm_up_steps: int = 0
     freeze_weights: bool = False
     use_jaccard: bool = False

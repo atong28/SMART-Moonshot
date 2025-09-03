@@ -1,6 +1,7 @@
 from typing import List, Dict, Any
 import logging
 import pytorch_lightning as pl
+import math
 import torch
 import torch.nn as nn
 import torch.distributed as dist
@@ -340,6 +341,32 @@ class SPECTRE(pl.LightningModule):
                     "interval": "step",
                     "frequency": 1,
                 }
+            }
+        elif self.scheduler == "cosine":
+            opt = torch.optim.AdamW(self.parameters(), lr=self.lr,
+                                weight_decay=self.weight_decay, betas=(0.9, 0.95))
+            total_steps = self.trainer.estimated_stepping_batches
+            steps_per_epoch = max(1, total_steps // self.trainer.max_epochs)
+            warmup_steps = int((self.args.epochs // 10) * steps_per_epoch)
+
+            min_factor = self.args.eta_min / self.args.lr  # final LR as a fraction of base LR
+
+            def lr_lambda(step: int):
+                if step < warmup_steps:
+                    return max(1e-6, step / max(1, warmup_steps))
+                t = (step - warmup_steps) / max(1, total_steps - warmup_steps)
+                cosine = 0.5 * (1.0 + math.cos(math.pi * t))
+                return min_factor + (1 - min_factor) * cosine
+
+            sched = torch.optim.lr_scheduler.LambdaLR(opt, lr_lambda=lr_lambda)
+
+            return {
+                "optimizer": opt,
+                "lr_scheduler": {
+                    "scheduler": sched,
+                    "interval": "step",  # step every optimizer step
+                    "name": "lr",
+                },
             }
 
     def log(self, name, value, *args, **kwargs):

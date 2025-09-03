@@ -45,6 +45,7 @@ def parse_args() -> SPECTREArgs:
     parser.add_argument('--dropout', type=float)
 
     parser.add_argument('--lr', type=float)
+    parser.add_argument('--eta_min', type=float)
     parser.add_argument('--noam_factor', type=float)
     parser.add_argument('--weight_decay', type=float)
     parser.add_argument('--l1_decay', type=float)
