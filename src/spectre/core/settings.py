@@ -19,7 +19,7 @@ class SPECTREArgs:
     debug: bool = False
     batch_size: int = 32
     num_workers: int = 8
-    epochs: int = 500
+    epochs: int = 750
     patience: int = 30
     persistent_workers: bool = True
     
@@ -45,10 +45,12 @@ class SPECTREArgs:
     mw_wavelength_bounds: List[float] = field(default_factory=lambda: [0.0001, 7000.0])
     dropout: float = 0.1
     save_params: bool = True
+    
+    hybrid_early_stopping: bool = False
 
     # training args
     lr: float = 2e-4
-    eta_min: float = 6e-6
+    eta_min: float = 1e-5
     noam_factor: float = 1.0
     weight_decay: float = 0.0
     l1_decay: float = 0.0
@@ -89,4 +91,4 @@ class SPECTREArgs:
     # fingerprint type
     fp_type: Literal['RankingEntropy', 'RankingBalanced', 'RankingSuperclass', 'RankingGlobal', 'Biosynfoni'] = 'RankingEntropy'
     
-    arch: Literal['v1', 'v2'] = 'v1'
+    arch: Literal['v1'] = 'v1'

@@ -33,7 +33,6 @@ from src.spectre.core.args import parse_args
 from src.spectre.core.settings import SPECTREArgs
 from src.spectre.data.fp_loader import make_fp_loader
 from src.spectre.arch.model import SPECTRE
-from src.spectre.archv2.model import SPECTREv2
 from src.spectre.train import train
 from src.spectre.test import test
 from src.spectre.core.const import DATASET_ROOT, CODE_ROOT
@@ -119,8 +118,6 @@ def main():
         fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
         if args.arch == 'v1':
             model = SPECTRE(args, fp_loader)
-        elif args.arch == 'v2':
-            model = SPECTREv2(args, fp_loader)
         data_module = SPECTREDataModule(args, fp_loader)
 
     # ----------------------------

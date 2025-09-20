@@ -24,18 +24,10 @@ from src.spectre.data.dataset import SPECTREDataModule
 # Combos (as you specified)
 # ----------------------------
 COMBO_STRS = [
-    "hsqc",
-    "h_nmr",
-    "c_nmr",
-    "mass_spec",
-    "{hsqc,c_nmr}",
-    "{hsqc,h_nmr}",
-    "{hsqc,mass_spec}",
-    "{c_nmr,h_nmr}",
-    "{c_nmr,mass_spec}",
-    "{h_nmr,mass_spec}",
-    "{hsqc,c_nmr,h_nmr}",
-    "{hsqc,c_nmr,h_nmr,mass_spec}",
+    "{hsqc,mw}",
+    "{h_nmr,mw}",
+    "{c_nmr,mw}",
+    "{mass_spec,mw}",
     "{hsqc,c_nmr,mw}",
     "{hsqc,h_nmr,mw}",
     "{hsqc,mass_spec,mw}",
@@ -43,23 +35,7 @@ COMBO_STRS = [
     "{c_nmr,mass_spec,mw}",
     "{h_nmr,mass_spec,mw}",
     "{hsqc,c_nmr,h_nmr,mw}",
-    "{hsqc,c_nmr,h_nmr,mass_spec,mw}",
-    "{hsqc,c_nmr,formula}",
-    "{hsqc,h_nmr,formula}",
-    "{hsqc,mass_spec,formula}",
-    "{c_nmr,h_nmr,formula}",
-    "{c_nmr,mass_spec,formula}",
-    "{h_nmr,mass_spec,formula}",
-    "{hsqc,c_nmr,h_nmr,formula}",
-    "{hsqc,c_nmr,h_nmr,mass_spec,formula}",
-    "{hsqc,c_nmr,mw,formula}",
-    "{hsqc,h_nmr,mw,formula}",
-    "{hsqc,mass_spec,mw,formula}",
-    "{c_nmr,h_nmr,mw,formula}",
-    "{c_nmr,mass_spec,mw,formula}",
-    "{h_nmr,mass_spec,mw,formula}",
-    "{hsqc,c_nmr,h_nmr,mw,formula}",
-    "{hsqc,c_nmr,h_nmr,mass_spec,mw,formula}",
+    "{hsqc,c_nmr,h_nmr,mass_spec,mw}"
 ]
 
 def is_main_process():

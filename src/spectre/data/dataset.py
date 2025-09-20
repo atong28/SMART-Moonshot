@@ -6,7 +6,7 @@ import sys
 import logging
 import random
 from itertools import islice
-from typing import Any
+from typing import Any, Optional
 
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
@@ -20,13 +20,13 @@ from .inputs import SpectralInputLoader, MFInputLoader
 logger = logging.getLogger('lightning')
 
 class SPECTREDataset(Dataset):
-    def __init__(self, args: SPECTREArgs, fp_loader: FPLoader, split: str = 'train'):
+    def __init__(self, args: SPECTREArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
         try:
             if split != 'train':
                 args.requires = args.input_types
             logger.info(f'[SPECTREDataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
-            self.input_types = args.input_types
-            self.requires = args.requires
+            self.input_types = args.input_types if override_input_types is None else override_input_types
+            self.requires = args.requires if override_input_types is None else override_input_types
 
             with open(os.path.join(DATASET_ROOT, 'index.pkl'), 'rb') as f:
                 data: dict[int, Any] = pickle.load(f)
@@ -159,6 +159,10 @@ class SPECTREDataModule(pl.LightningDataModule):
         self.collate_fn = collate
         self.persistent_workers = bool(args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
+        if args.hybrid_early_stopping:
+            self.test_types = [args.input_types] + [[input_type] for input_type in (set(args.input_types) - {'mw', 'formula'})]
+        else:
+            self.test_types = [args.input_types]
         
         self._fit_is_setup = False
         self._test_is_setup = False
@@ -166,10 +170,10 @@ class SPECTREDataModule(pl.LightningDataModule):
     def setup(self, stage):
         if (stage == "fit" or stage == "validate" or stage is None) and not self._fit_is_setup:
             self.train = SPECTREDataset(self.args, self.fp_loader, split='train')
-            self.val = SPECTREDataset(self.args, self.fp_loader, split='val')
+            self.val = [SPECTREDataset(self.args, self.fp_loader, split='val', override_input_types=input_type) for input_type in self.test_types]
             self._fit_is_setup = True
         if (stage == "test") and not self._test_is_setup:
-            self.test = SPECTREDataset(self.args, self.fp_loader, split='test')
+            self.test = [SPECTREDataset(self.args, self.fp_loader, split='test', override_input_types=input_type) for input_type in self.test_types]
             self._test_is_setup = True
         if stage == "predict":
             raise NotImplementedError("Predict setup not implemented")
@@ -195,22 +199,23 @@ class SPECTREDataModule(pl.LightningDataModule):
     def val_dataloader(self):
         if not self._fit_is_setup:
             self.setup(stage = 'fit')
-        return DataLoader(
-            self.val,
+        return [DataLoader(
+            val_dl,
             batch_size=self.batch_size,
             collate_fn=self.collate_fn, 
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
-        )
+        ) for val_dl in self.val]
+
     def test_dataloader(self):
         if not self._test_is_setup:
             self.setup(stage = 'test')
-        return DataLoader(
-            self.test,
+        return [DataLoader(
+            test_dl,
             batch_size=self.batch_size,
             collate_fn=self.collate_fn, 
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
-        )
+        ) for test_dl in self.test]

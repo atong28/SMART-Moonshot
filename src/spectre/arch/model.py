@@ -169,8 +169,8 @@ class SPECTRE(pl.LightningModule):
         else:
             self.loss = MSECosineHybridLoss(lambda_mse = args.lambda_hybrid)
 
-        self.validation_step_outputs: List[Dict[str, Any]] = []
-        self.test_step_outputs: List[Dict[str, Any]] = []
+        self.validation_step_outputs = defaultdict(list)
+        self.test_step_outputs = defaultdict(list)
         
         if self.freeze_weights:
             for parameter in self.parameters():
@@ -185,6 +185,12 @@ class SPECTRE(pl.LightningModule):
         
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
+        
+        if self.args.hybrid_early_stopping:
+            spectra_types = set(self.args.input_types) - {'mw', 'formula'}
+            self.loss_weights = np.array([0.5] + [0.5/len(spectra_types)] * len(spectra_types))
+        else:
+            self.loss_weights = np.array([1.0])
         
     def forward(self, batch, batch_idx=None, return_representations=False):
         B = next(iter(batch.values())).size(0)
@@ -263,12 +269,11 @@ class SPECTRE(pl.LightningModule):
         self.log("tr/loss", loss, prog_bar=True)
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(self, batch, batch_idx, dataloader_idx=None):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
         if self.fp_mode_binary:
-            # keep your old cm() path
             metrics, _ = cm(
                 logits, fps, self.ranker, loss, self.loss,
                 thresh=0.0, query_idx_in_rankingset=batch_idx, no_ranking=True
@@ -278,10 +283,27 @@ class SPECTRE(pl.LightningModule):
                 logits, fps, self.ranker, loss,
                 query_idx_in_rankingset=None, no_ranking=True
             )
-        self.validation_step_outputs.append(metrics)
+        
+        # Determine input type based on dataloader_idx
+        if dataloader_idx is not None:
+            if dataloader_idx == 0:
+                # Index 0 is all input types combined
+                input_type_key = "all_inputs"
+            else:
+                # Indices 1+ are individual input types
+                spectral_types = list(set(self.args.input_types) - {'mw', 'formula'})
+                if dataloader_idx - 1 < len(spectral_types):
+                    input_type_key = spectral_types[dataloader_idx - 1]
+                else:
+                    input_type_key = f"unknown_{dataloader_idx}"
+        else:
+            # Fallback for backward compatibility
+            input_type_key = "default"
+        
+        self.validation_step_outputs[input_type_key].append(metrics)
         return metrics
     
-    def test_step(self, batch, batch_idx):
+    def test_step(self, batch, batch_idx, dataloader_idx=None):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
@@ -295,7 +317,24 @@ class SPECTRE(pl.LightningModule):
                 logits, fps, self.ranker, loss,
                 query_idx_in_rankingset=None, no_ranking=False
             )
-        self.test_step_outputs.append(metrics)
+        
+        # Determine input type based on dataloader_idx
+        if dataloader_idx is not None:
+            if dataloader_idx == 0:
+                # Index 0 is all input types combined
+                input_type_key = "all_inputs"
+            else:
+                # Indices 1+ are individual input types
+                spectral_types = list(set(self.args.input_types) - {'mw', 'formula'})
+                if dataloader_idx - 1 < len(spectral_types):
+                    input_type_key = spectral_types[dataloader_idx - 1]
+                else:
+                    input_type_key = f"unknown_{dataloader_idx}"
+        else:
+            # Fallback for backward compatibility
+            input_type_key = "default"
+        
+        self.test_step_outputs[input_type_key].append(metrics)
         return metrics
 
 
@@ -303,23 +342,29 @@ class SPECTRE(pl.LightningModule):
         raise NotImplementedError()
 
     def on_validation_epoch_end(self):
-        feats = self.validation_step_outputs[0].keys()
+        feats = self.validation_step_outputs["all_inputs"][0].keys()
         di = {}
         for feat in feats:
-            di[f"val/mean_{feat}"] = np.mean([v[feat]
-                                             for v in self.validation_step_outputs])
+            for input_type in self.validation_step_outputs.keys():
+                di[f"val/mean_{feat}/{input_type}"] = np.mean(
+                    [v[feat] for v in self.validation_step_outputs[input_type]]
+                )
+            di[f"val/mean_{feat}"] = np.average([di[f"val/mean_{feat}/{input_type}"] for input_type in self.validation_step_outputs.keys()], weights=self.loss_weights)
         for k, v in di.items():
-            self.log(k, v, on_epoch=True, prog_bar=k=="val/mean_rank_1", sync_dist=True)
+            self.log(k, v, on_epoch=True, sync_dist=True)
         self.validation_step_outputs.clear()
         
     def on_test_epoch_end(self):
-        feats = self.test_step_outputs[0].keys()
+        feats = self.test_step_outputs["all_inputs"][0].keys()
         di = {}
         for feat in feats:
-            di[f"test/mean_{feat}"] = np.mean([v[feat]
-                                             for v in self.test_step_outputs])
+            for input_type in self.test_step_outputs.keys():
+                di[f"test/mean_{feat}/{input_type}"] = np.mean(
+                    [v[feat] for v in self.test_step_outputs[input_type]]
+                )
+            di[f"test/mean_{feat}"] = np.average([di[f"test/mean_{feat}/{input_type}"] for input_type in self.test_step_outputs.keys()], weights=self.loss_weights)
         for k, v in di.items():
-            self.log(k, v, on_epoch=True)
+            self.log(k, v, on_epoch=True, sync_dist=True)
         self.test_step_outputs.clear()
 
     def configure_optimizers(self):

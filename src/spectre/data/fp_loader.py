@@ -97,8 +97,6 @@ class EntropyFPLoader(FPLoader):
         rankingset_path = os.path.join(DATASET_ROOT, fp_type, 'rankingset.pt')
         return torch.load(rankingset_path, weights_only=True)
 
-# data/fp_loader.py  (add this class)
-
 class IRFPFPLoader:
     """
     Loads precomputed TF-IDF fingerprints saved per-idx at:

@@ -9,9 +9,9 @@ INPUTS_CANONICAL_ORDER: List[INPUT_TYPES] = ['hsqc', 'c_nmr', 'h_nmr', 'mass_spe
 DEBUG_LEN: int = 3000
 
 DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
-    'hsqc': 0,
-    'h_nmr': 0.3984,
-    'c_nmr': 0.2032,
+    'hsqc': 0.20990,
+    'h_nmr': 0.1604,
+    'c_nmr': 0.1604,
     'mass_spec': 0.5,
     'mw': 0.5,
     'formula': 0.5

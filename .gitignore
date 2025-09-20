@@ -218,4 +218,7 @@ spectre_ckpt/
 cache.pkl
 logs/
 checkpoints/
-old_ckpt/
+old_ckpt/# pixi environments
+.pixi/*
+!.pixi/config.toml
+ckpt/
