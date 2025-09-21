@@ -298,7 +298,7 @@ class SPECTRE(pl.LightningModule):
                     input_type_key = f"unknown_{dataloader_idx}"
         else:
             # Fallback for backward compatibility
-            input_type_key = "default"
+            input_type_key = "all_inputs"
         
         self.validation_step_outputs[input_type_key].append(metrics)
         return metrics
@@ -332,7 +332,7 @@ class SPECTRE(pl.LightningModule):
                     input_type_key = f"unknown_{dataloader_idx}"
         else:
             # Fallback for backward compatibility
-            input_type_key = "default"
+            input_type_key = "all_inputs"
         
         self.test_step_outputs[input_type_key].append(metrics)
         return metrics
