@@ -42,6 +42,7 @@ def parse_args() -> SPECTREArgs:
     parser.add_argument('--out_dim', type=int)
     parser.add_argument('--accumulate_grad_batches_num', type=int)
     add_bool_flag(parser, 'hybrid_early_stopping', False)
+    parser.add_argument('--modality_dropout_scheduler', choices=['constant', 'scheduled'], default=None)
     
     parser.add_argument('--dropout', type=float)
 

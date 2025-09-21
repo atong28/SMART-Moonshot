@@ -47,6 +47,7 @@ class SPECTREArgs:
     save_params: bool = True
     
     hybrid_early_stopping: bool = False
+    modality_dropout_scheduler: Optional[str] = None # None, 'constant', 'scheduled'
 
     # training args
     lr: float = 2e-4

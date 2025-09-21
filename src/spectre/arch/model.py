@@ -367,6 +367,21 @@ class SPECTRE(pl.LightningModule):
             self.log(k, v, on_epoch=True, sync_dist=True)
         self.test_step_outputs.clear()
 
+    def on_train_epoch_start(self):
+        """Set the modality-dropout curriculum phase once per epoch (cached)."""
+        try:
+            max_epochs = max(1, getattr(self.trainer, "max_epochs", 1))
+            phase = 2.0 * (self.current_epoch / (max_epochs - 1)) if max_epochs > 1 else 2.0
+            dm = self.trainer.datamodule
+            if hasattr(dm, "train") and hasattr(dm.train, "set_phase"):
+                dm.train.set_phase(phase)
+        except Exception as e:
+            logger.warning(f"[SPECTRE] Could not set modality dropout phase: {e}")
+    
+    def on_train_epoch_end(self):
+        # Emit distributions to the logger (W&B will pick these up)
+        self._log_modality_distribution_lightning()
+
     def configure_optimizers(self):
         if not self.scheduler:
             return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay = self.weight_decay)
@@ -427,3 +442,27 @@ class SPECTRE(pl.LightningModule):
             metric = "cosine"
 
         self.ranker = RankingSet(store=store, metric=metric)
+
+    def _log_modality_distribution_lightning(self):
+        """
+        Logs per-combo expected target marginal *as individual scalars* (Lightning-native).
+        These will show as separate series you can manually group in the W&B UI.
+        """
+        try:
+            dm = self.trainer.datamodule
+            sched = getattr(getattr(dm, "train", None), "drop_scheduler", None)
+            if sched is None:
+                return
+
+            tgt = sched.expected_target_marginal(phase=None, labeled=True)
+            for name, prob in tgt.items():
+                self.log(f"modality_dist/{name}", float(prob), on_epoch=True, prog_bar=False, sync_dist=True)
+
+            # (Optional) dataset availability context
+            avail = sched.observed_availability_marginal(labeled=True)
+            for name, prob in avail.items():
+                self.log(f"modality_avail/{name}", float(prob), on_epoch=True, prog_bar=False, sync_dist=True)
+        except Exception as e:
+            logger.warning(f"[SPECTRE] Could not log modality distributions: {e}")
+    
+    

@@ -16,12 +16,15 @@ from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DAT
 from ..core.settings import SPECTREArgs
 from .fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
+from .modality_dropout_scheduler import ModalityDropoutScheduler
 
 logger = logging.getLogger('lightning')
 
 class SPECTREDataset(Dataset):
     def __init__(self, args: SPECTREArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
         try:
+            self.args = args  # <-- store args
+
             if split != 'train':
                 args.requires = args.input_types
             logger.info(f'[SPECTREDataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
@@ -57,7 +60,23 @@ class SPECTREDataset(Dataset):
             self.jittering = args.jittering
             self.spectral_loader = SpectralInputLoader(DATASET_ROOT, data)
             self.mfp_loader = MFInputLoader(fp_loader)
+            
             self.data = list(data.items())
+
+            # Initialize modality dropout scheduler if requested
+            if self.args.modality_dropout_scheduler:
+                sched_keys = tuple(f'has_{it}' for it in self.input_types if it not in ('mw', 'formula'))
+                self.drop_scheduler = ModalityDropoutScheduler(
+                    dataset_entries=self.data,
+                    keys=sched_keys,
+                    mode=self.args.modality_dropout_scheduler,  # "constant" or "scheduled"
+                    total_phases=2.0,
+                    beta_end=1.5,
+                    enforce_constraints=True
+                )
+            else:
+                self.drop_scheduler = None
+
             logger.info('[SPECTREDataset] Setup complete!')
         
         except Exception:
@@ -67,27 +86,38 @@ class SPECTREDataset(Dataset):
     
     def __len__(self):
         return len(self.data)
+
+    def set_phase(self, phase: float):
+        """Forward curriculum phase to the modality dropout scheduler, if enabled."""
+        if hasattr(self, "drop_scheduler") and self.drop_scheduler is not None:
+            if hasattr(self.drop_scheduler, "set_phase"):
+                self.drop_scheduler.set_phase(phase)
     
     def __getitem__(self, idx):
         data_idx, data_obj = self.data[idx]
-        available_types = {
-            'hsqc': data_obj['has_hsqc'],
-            'c_nmr': data_obj['has_c_nmr'],
-            'h_nmr': data_obj['has_h_nmr'],
-            'mass_spec': data_obj['has_mass_spec']
-        }
-        drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
-        assert len(drop_candidates) > 0, 'Found an empty entry!'
-        
-        always_keep = random.choice(drop_candidates)
-        input_types = set(self.input_types)
-        for input_type in self.input_types:
-            if not data_obj[f'has_{input_type}']:
-                input_types.remove(input_type)
-            elif (input_type != always_keep and 
-                  input_type not in self.requires and 
-                  random.random() < DROP_PERCENTAGE[input_type]):
-                input_types.remove(input_type)
+        if self.args.modality_dropout_scheduler and self.drop_scheduler is not None:
+            input_types = set(self.drop_scheduler.sample_kept_modalities(
+                data_obj, requires=set(self.requires)      # e.g. {'hsqc'} or empty set
+            ))
+        else:
+            available_types = {
+                'hsqc': data_obj['has_hsqc'],
+                'c_nmr': data_obj['has_c_nmr'],
+                'h_nmr': data_obj['has_h_nmr'],
+                'mass_spec': data_obj['has_mass_spec']
+            }
+            drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
+            assert len(drop_candidates) > 0, 'Found an empty entry!'
+            
+            always_keep = random.choice(drop_candidates)
+            input_types = set(self.input_types)
+            for input_type in self.input_types:
+                if not data_obj[f'has_{input_type}']:
+                    input_types.remove(input_type)
+                elif (input_type != always_keep and 
+                    input_type not in self.requires and 
+                    random.random() < DROP_PERCENTAGE[input_type]):
+                    input_types.remove(input_type)
         return self.spectral_loader.load(data_idx, input_types, jittering = self.jittering), self.mfp_loader.load(data_idx)
 
 def collate(batch):

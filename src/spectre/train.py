@@ -16,7 +16,7 @@ from .test import test
 def train(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, wandb_run = None):
     torch.set_float32_matmul_precision('medium')
     if args.debug:
-        args.epochs = 1
+        args.epochs = 5
     logger = logging.getLogger('lightning')
     logger.info(f'[Main] Results Path: {results_path}')
     try:
