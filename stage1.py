@@ -124,7 +124,6 @@ def main():
     # Train / Test
     # ----------------------------
     if args.train:
-        args.epochs = 5
         train(args, data_module, model, results_path, wandb_run=wandb_run)
 
     elif args.test:
