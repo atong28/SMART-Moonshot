@@ -4,17 +4,8 @@ from typing import Iterable, Dict
 import torch
 import torch.nn.functional as F
 
-from ..core.const import INPUT_TYPES, UNK_IDX, FORMULA_RE, ELEM2IDX
+from ..core.const import INPUT_TYPES
 from .fp_loader import FPLoader
-
-def parse_formula(formula: str) -> dict[str,int]:
-    """
-    Turn "C20H25BrN2O2" → {"C":20, "H":25, "Br":1, "N":2, "O":2}
-    """
-    counts: dict[str,int] = {}
-    for elem, cnt in FORMULA_RE.findall(formula):
-        counts[elem] = int(cnt) if cnt else 1
-    return counts
 
 class SpectralInputLoader:
     '''
@@ -25,7 +16,6 @@ class SpectralInputLoader:
     - C NMR ('c_nmr')
     - MS/MS ('mass_spec')
     - Molecular Weight ('mw')
-    - Chemical Formula ('formula')
     '''
     def __init__(self, root: str, data_dict: dict, dtype=torch.float32):
         '''
@@ -101,21 +91,6 @@ class SpectralInputLoader:
     
     def _load_mw(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
         return {'mw': torch.tensor(self.data_dict[idx]['mw'], dtype=self.dtype)}
-    
-    def _load_formula(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
-        formula = self.data_dict[idx]['formula']
-        elem_counts = parse_formula(formula)
-        ordered = []
-        if 'C' in elem_counts: ordered.append('C')
-        if 'H' in elem_counts: ordered.append('H')
-        for e in sorted(e for e in elem_counts if e not in ('C','H')):
-            ordered.append(e)
-        idxs = [ELEM2IDX.get(e, UNK_IDX) for e in ordered]
-        cnts = [elem_counts[e] for e in ordered]
-        return {
-            'elem_idx': torch.tensor(idxs, dtype=torch.long),
-            'elem_cnt': torch.tensor(cnts, dtype=torch.long)
-        }
 
 class MFInputLoader:
     '''

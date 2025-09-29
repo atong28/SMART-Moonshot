@@ -24,17 +24,17 @@ from src.spectre.data.dataset import SPECTREDataModule
 # Combos (as you specified)
 # ----------------------------
 COMBO_STRS = [
-    "{hsqc,mw}",
-    "{h_nmr,mw}",
-    "{c_nmr,mw}",
-    "{mass_spec,mw}",
-    "{hsqc,c_nmr,mw}",
-    "{hsqc,h_nmr,mw}",
-    "{hsqc,mass_spec,mw}",
-    "{c_nmr,h_nmr,mw}",
-    "{c_nmr,mass_spec,mw}",
-    "{h_nmr,mass_spec,mw}",
-    "{hsqc,c_nmr,h_nmr,mw}",
+    #"{hsqc,mw}",
+    #"{h_nmr,mw}",
+    #"{c_nmr,mw}",
+    #"{mass_spec,mw}",
+    #"{hsqc,c_nmr,mw}",
+    #"{hsqc,h_nmr,mw}",
+    #"{hsqc,mass_spec,mw}",
+    #"{c_nmr,h_nmr,mw}",
+    #"{c_nmr,mass_spec,mw}",
+    #"{h_nmr,mass_spec,mw}",
+    #"{hsqc,c_nmr,h_nmr,mw}",
     "{hsqc,c_nmr,h_nmr,mass_spec,mw}"
 ]
 
