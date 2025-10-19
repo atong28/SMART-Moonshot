@@ -11,10 +11,10 @@ class SPECTREArgs:
     train: bool = True
     test: bool = True
     
-    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
+    input_types: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
         default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
     )
-    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(default_factory=lambda: [])
+    requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(default_factory=lambda: [])
     
     debug: bool = False
     batch_size: int = 32
@@ -75,7 +75,7 @@ class SPECTREArgs:
 
     # Adapter training
     adapter_dir: str = "adapters"
-    train_adapter_for_combo: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula']] = field(
+    train_adapter_for_combo: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
         default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
     )
     lora_only: bool = True
@@ -89,6 +89,4 @@ class SPECTREArgs:
     lambda_hybrid: float = 0.0
 
     # fingerprint type
-    fp_type: Literal['RankingEntropy', 'RankingBalanced', 'RankingSuperclass', 'RankingGlobal', 'Biosynfoni'] = 'RankingEntropy'
-    
-    arch: Literal['v1'] = 'v1'
+    fp_type: Literal['RankingEntropy'] = 'RankingEntropy'

@@ -19,8 +19,8 @@ def parse_args() -> SPECTREArgs:
     parser.add_argument('--seed', type=int)
     parser.add_argument('--load_from_checkpoint')
 
-    parser.add_argument('--input_types', nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula'])
-    parser.add_argument('--requires', nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula'])
+    parser.add_argument('--input_types', nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'])
+    parser.add_argument('--requires', nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'])
 
     add_bool_flag(parser, 'debug', False)
     add_bool_flag(parser, 'persistent_workers', True)
@@ -77,7 +77,7 @@ def parse_args() -> SPECTREArgs:
     # --- Adapter training / mgmt ---
     parser.add_argument("--adapter_dir", type=str,
                         help="Directory to save/load LoRA-only adapter files.")
-    parser.add_argument("--train_adapter_for_combo", nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw', 'formula'],
+    parser.add_argument("--train_adapter_for_combo", nargs='+', choices=['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'],
                         help="Canonical combo key to train an adapter for (e.g., 'c_nmr+hsqc+mw'). Empty = normal training.")
 
     add_bool_flag(parser, 'lora_only', True)
@@ -94,8 +94,7 @@ def parse_args() -> SPECTREArgs:
                         help="Distill base behavior using logits or CLS embeddings on full-modality batches.")
 
     parser.add_argument("--lambda_hybrid", type=float)
-    parser.add_argument("--fp_type", type=str, choices=['RankingEntropy', 'RankingSuperclass', 'RankingGlobal', 'RankingBalanced', 'Biosynfoni'])
-    parser.add_argument("--arch", type=str, choices=['v1', 'v2'])
+    parser.add_argument("--fp_type", type=str, choices=['RankingEntropy'])
 
     args = parser.parse_args()
     if args.train_lora:

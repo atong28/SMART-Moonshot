@@ -220,27 +220,10 @@ class RankingSet(torch.nn.Module):
                 union = torch.sum((queries + truths) > 0, dim=1).clamp_min(1)
                 thresh = intersection / union  # (Q,)
                 return self.jaccard_rank(self.data, queries, truths, thresh, query_idx_in_rankingset)
-
             if self.metric == "cosine":
                 qn = F.normalize(queries, dim=1, p=2.0)
                 tn = F.normalize(truths, dim=1, p=2.0)
                 thresh = torch.sum((qn * tn), dim=1, keepdim=True).T  # (1, Q)
                 return self.dot_prod_rank(self.data, qn, tn, thresh, query_idx_in_rankingset)
-
-            elif self.metric == "tanimoto":
-                q = torch.clamp(queries, min=0)
-                t = torch.clamp(truths,  min=0)
-                dot_qt = torch.sum(q * t, dim=1)        # (Q,)
-                q_sq   = torch.sum(q * q, dim=1)        # (Q,)
-                t_sq   = torch.sum(t * t, dim=1)        # (Q,)
-                thresh = (dot_qt / (q_sq + t_sq - dot_qt + self.eps)).unsqueeze(0)  # (1,Q)
-
-                sims = self._sims(q)                    # (N,Q)
-                ct = torch.sum(
-                    torch.logical_or(sims >= thresh, torch.isclose(sims, thresh)),
-                    dim=0, keepdim=True, dtype=torch.int32
-                )
-                return (ct - 1).squeeze(0)
-
             else:
                 raise ValueError(f"Unknown metric: {self.metric}")

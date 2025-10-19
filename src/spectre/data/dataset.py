@@ -58,7 +58,7 @@ class SPECTREDataset(Dataset):
                 raise RuntimeError(f'[SPECTREDataset] Dataset split {split} is empty!')
             
             self.jittering = args.jittering
-            self.spectral_loader = SpectralInputLoader(DATASET_ROOT, data)
+            self.spectral_loader = SpectralInputLoader(DATASET_ROOT, data, split=split)
             self.mfp_loader = MFInputLoader(fp_loader)
             
             self.data = list(data.items())
@@ -157,25 +157,6 @@ def collate(batch):
         # create a (B,) tensor of scalars
         batch_inputs["mw"] = torch.tensor(mw_floats, dtype=torch.float)
 
-    # 3) Handle element‐group tokens (idx + count)
-    elem_idx_seqs = [d.get('elem_idx') for d in dicts]
-    if any(x is not None for x in elem_idx_seqs):
-        # pad element‐ID sequences (pad_value=0)
-        batch_inputs['elem_idx'] = pad_sequence(
-            [x if x is not None else torch.zeros(0,dtype=torch.long)
-             for x in elem_idx_seqs],
-            batch_first=True,
-            padding_value=0
-        )
-        # pad count sequences (pad_value=0)
-        cnt_seqs = [d.get('elem_cnt') for d in dicts]
-        batch_inputs['elem_cnt'] = pad_sequence(
-            [x if x is not None else torch.zeros(0,dtype=torch.long)
-             for x in cnt_seqs],
-            batch_first=True,
-            padding_value=0
-        )
-
     # 4) Stack your fingerprints
     batch_fps = torch.stack(fps, dim=0)
     return batch_inputs, batch_fps
@@ -189,10 +170,7 @@ class SPECTREDataModule(pl.LightningDataModule):
         self.collate_fn = collate
         self.persistent_workers = bool(args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
-        if args.hybrid_early_stopping:
-            self.test_types = [args.input_types] + [[input_type] for input_type in (set(args.input_types) - {'mw', 'formula'})]
-        else:
-            self.test_types = [args.input_types]
+        self.test_types = [args.input_types] + [[input_type] for input_type in (set(args.input_types) - {'mw', 'formula'})]
         
         self._fit_is_setup = False
         self._test_is_setup = False

@@ -1,5 +1,20 @@
 import logging
 import pytorch_lightning as pl
+import warnings
+import os
+warnings.filterwarnings(
+    "ignore",
+    message="The PyTorch API of nested tensors is in prototype stage",
+    category=UserWarning,
+    module="torch.nn.modules.transformer"
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"It is recommended to use `self\.log\('.*', \.\.\., sync_dist=True\)` when logging on epoch level",
+    category=UserWarning,
+    module="pytorch_lightning.trainer.connectors.logger_connector.result"
+)
+os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 
 def is_main_process():
     return int(os.environ.get("RANK", 0)) == 0
@@ -19,7 +34,6 @@ def init_logger(path):
         logger.addHandler(logging.StreamHandler(sys.stdout))
     return logger
 
-import os
 import sys
 import json
 import shutil
@@ -115,9 +129,8 @@ def main():
         args.requires = args.train_adapter_for_combo
         data_module = SPECTREDataModule(args, fp_loader)
     else:
-        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim)
-        if args.arch == 'v1':
-            model = SPECTRE(args, fp_loader)
+        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'))
+        model = SPECTRE(args, fp_loader)
         data_module = SPECTREDataModule(args, fp_loader)
 
     # ----------------------------

@@ -7,18 +7,17 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
-from ..core.const import ELEM2IDX
 from ..core.settings import SPECTREArgs
 from ..core.utils import L1
-from ..core.metrics import cm, cm_tfidf
+from ..core.metrics import cm
 from ..core.ranker import RankingSet
 from ..core.lr_scheduler import NoamOpt
 from ..data.fp_loader import FPLoader
 from ..data.encoder import build_encoder
+from ..data.modality_dropout_scheduler import ModalityDropoutScheduler
 from .attention import MultiHeadAttentionCore
-from .bce_hybrid_loss import BCECosineHybridLoss
-from .mse_hybrid_loss import MSECosineHybridLoss
-from .mse_tani_loss import MSETanimotoHybridLoss
+from .loss import BCECosineHybridLoss
+
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -26,15 +25,6 @@ if dist.is_initialized():
     if rank != 0:
         logger.setLevel(logging.WARNING)
 logger_should_sync_dist = torch.cuda.device_count() > 1
-
-def is_binary_fp(fp_type: str) -> bool:
-    return fp_type == "RankingEntropy"
-
-def is_tfidf_fp(fp_type: str) -> bool:
-    return fp_type in {"RankingBalanced", "RankingGlobal", "RankingSuperclass"}
-
-def is_count_fp(fp_type: str) -> bool:
-    return fp_type == "Biosynfoni"
 
 class CrossAttentionBlock(nn.Module):
     """
@@ -148,24 +138,8 @@ class SPECTRE(pl.LightningModule):
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
-        num_elem_tokens = len(ELEM2IDX) + 1    # +1 for PAD=0
-        self.elem_embed = nn.Embedding(
-            num_embeddings = num_elem_tokens,
-            embedding_dim  = self.dim_model,
-            padding_idx    = 0
-        )
-        self.cnt_embed = nn.Linear(1, self.dim_model)
 
-        self.fp_mode_binary = is_binary_fp(self.args.fp_type)
-        self.fp_mode_tfidf  = is_tfidf_fp(self.args.fp_type)
-        self.fp_mode_count  = is_count_fp(self.args.fp_type)
-        if self.fp_mode_binary:
-            self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
-        elif self.fp_mode_count:
-            self.fp_activation = nn.Softplus()
-            self.loss = MSETanimotoHybridLoss(lambda_mse=args.lambda_hybrid)
-        else:
-            self.loss = MSECosineHybridLoss(lambda_mse = args.lambda_hybrid)
+        self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
 
         self.validation_step_outputs = defaultdict(list)
         self.test_step_outputs = defaultdict(list)
@@ -184,11 +158,11 @@ class SPECTRE(pl.LightningModule):
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
         
+        spectra_types = set(self.args.input_types) - {'mw'}
         if self.args.hybrid_early_stopping:
-            spectra_types = set(self.args.input_types) - {'mw', 'formula'}
             self.loss_weights = np.array([0.5] + [0.5/len(spectra_types)] * len(spectra_types))
         else:
-            self.loss_weights = np.array([1.0])
+            self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
         
     def forward(self, batch, batch_idx=None, return_representations=False):
         B = next(iter(batch.values())).size(0)
@@ -223,21 +197,6 @@ class SPECTRE(pl.LightningModule):
             all_points.append(mw_feat)
             all_masks.append(torch.zeros(B, 1, dtype=torch.bool, device=mw_feat.device))
 
-        if 'elem_idx' in batch and 'elem_cnt' in batch:
-            # (B, L_elem)
-            eidx = batch['elem_idx']
-            ecnt = batch['elem_cnt'].unsqueeze(-1).float()  # → (B, L, 1)
-
-            # embed
-            ve = self.elem_embed(eidx)    # → (B, L, D)
-            vc = self.cnt_embed(ecnt)     # → (B, L, D)
-            te = ve + vc                  # combine by addition
-
-            # padding mask: True=pad, False=real
-            me = (eidx == 0)              # → (B, L)
-            all_points.append(te)
-            all_masks.append(me)
-
         joint_seq = torch.cat(all_points, dim=1)  # (B, N_total+1, D)
         joint_mask = torch.cat(all_masks, dim=1)  # (B, N_total+1)
 
@@ -253,8 +212,6 @@ class SPECTRE(pl.LightningModule):
 
         # 7. Final projection
         out = self.fc(global_token.squeeze(1))  # (B, out_dim)
-        if self.fp_mode_count:
-            out = self.fp_activation(out)
 
         if return_representations:
             return global_token.squeeze(1).detach().cpu().numpy()
@@ -264,39 +221,24 @@ class SPECTRE(pl.LightningModule):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        self.log("tr/loss", loss, prog_bar=True)
+        self.log("tr/loss", loss, prog_bar=True, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=None):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        if self.fp_mode_binary:
-            metrics, _ = cm(
-                logits, fps, self.ranker, loss, self.loss,
-                thresh=0.0, query_idx_in_rankingset=batch_idx, no_ranking=True
-            )
-        else:
-            metrics, _ = cm_tfidf(
-                logits, fps, self.ranker, loss,
-                query_idx_in_rankingset=None, no_ranking=True
-            )
-        
-        # Determine input type based on dataloader_idx
-        if dataloader_idx is not None:
-            if dataloader_idx == 0:
-                # Index 0 is all input types combined
-                input_type_key = "all_inputs"
+        metrics, _ = cm(
+            logits, fps, self.ranker, loss, self.loss,
+            thresh=0.0, query_idx_in_rankingset=batch_idx, no_ranking=True
+        )
+        input_type_key = "all_inputs"
+        if dataloader_idx is not None and dataloader_idx > 0:
+            spectral_types = list(set(self.args.input_types) - {'mw'})
+            if dataloader_idx - 1 < len(spectral_types):
+                input_type_key = spectral_types[dataloader_idx - 1]
             else:
-                # Indices 1+ are individual input types
-                spectral_types = list(set(self.args.input_types) - {'mw', 'formula'})
-                if dataloader_idx - 1 < len(spectral_types):
-                    input_type_key = spectral_types[dataloader_idx - 1]
-                else:
-                    input_type_key = f"unknown_{dataloader_idx}"
-        else:
-            # Fallback for backward compatibility
-            input_type_key = "all_inputs"
+                input_type_key = f"unknown_{dataloader_idx}"
         
         self.validation_step_outputs[input_type_key].append(metrics)
         return metrics
@@ -305,32 +247,19 @@ class SPECTRE(pl.LightningModule):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        if self.fp_mode_binary:
-            metrics, _ = cm(
-                logits, fps, self.ranker, loss, self.loss,
-                thresh=0.0, query_idx_in_rankingset=None, no_ranking=False
-            )
-        else:
-            metrics, _ = cm_tfidf(
-                logits, fps, self.ranker, loss,
-                query_idx_in_rankingset=None, no_ranking=False
-            )
+        metrics, _ = cm(
+            logits, fps, self.ranker, loss, self.loss,
+            thresh=0.0, query_idx_in_rankingset=None, no_ranking=False
+        )
         
         # Determine input type based on dataloader_idx
-        if dataloader_idx is not None:
-            if dataloader_idx == 0:
-                # Index 0 is all input types combined
-                input_type_key = "all_inputs"
+        input_type_key = "all_inputs"
+        if dataloader_idx is not None and dataloader_idx > 0:
+            spectral_types = list(set(self.args.input_types) - {'mw'})
+            if dataloader_idx - 1 < len(spectral_types):
+                input_type_key = spectral_types[dataloader_idx - 1]
             else:
-                # Indices 1+ are individual input types
-                spectral_types = list(set(self.args.input_types) - {'mw', 'formula'})
-                if dataloader_idx - 1 < len(spectral_types):
-                    input_type_key = spectral_types[dataloader_idx - 1]
-                else:
-                    input_type_key = f"unknown_{dataloader_idx}"
-        else:
-            # Fallback for backward compatibility
-            input_type_key = "all_inputs"
+                input_type_key = f"unknown_{dataloader_idx}"
         
         self.test_step_outputs[input_type_key].append(metrics)
         return metrics
@@ -367,12 +296,14 @@ class SPECTRE(pl.LightningModule):
 
     def on_train_epoch_start(self):
         """Set the modality-dropout curriculum phase once per epoch (cached)."""
+        if self.args.modality_dropout_scheduler is None:
+            return
         try:
             max_epochs = max(1, getattr(self.trainer, "max_epochs", 1))
             phase = 2.0 * (self.current_epoch / (max_epochs - 1)) if max_epochs > 1 else 2.0
             dm = self.trainer.datamodule
-            if hasattr(dm, "train") and hasattr(dm.train, "set_phase"):
-                dm.train.set_phase(phase)
+            assert hasattr(dm, "train") and hasattr(dm.train, "set_phase")
+            dm.train.set_phase(phase)
         except Exception as e:
             logger.warning(f"[SPECTRE] Could not set modality dropout phase: {e}")
     
@@ -434,12 +365,7 @@ class SPECTRE(pl.LightningModule):
 
     def setup_ranker(self):
         store = self.fp_loader.load_rankingset(self.args.fp_type)
-        if self.fp_mode_count:
-            metric = "tanimoto"
-        else:
-            metric = "cosine"
-
-        self.ranker = RankingSet(store=store, metric=metric)
+        self.ranker = RankingSet(store=store, metric="cosine")
 
     def _log_modality_distribution_lightning(self):
         """
@@ -448,7 +374,7 @@ class SPECTRE(pl.LightningModule):
         """
         try:
             dm = self.trainer.datamodule
-            sched = getattr(getattr(dm, "train", None), "drop_scheduler", None)
+            sched: ModalityDropoutScheduler = getattr(getattr(dm, "train", None), "drop_scheduler", None)
             if sched is None:
                 return
 
