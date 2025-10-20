@@ -49,7 +49,7 @@ from src.marina.data.fp_loader import make_fp_loader
 from src.marina.arch.model import SPECTRE
 from src.marina.train import train
 from src.marina.test import test
-from src.marina.core.const import DATASET_ROOT, CODE_ROOT, WANDB_API_KEY_FILE
+from src.marina.core.const import DATASET_ROOT, WANDB_API_KEY_FILE, PVC_ROOT
 from src.marina.lora.spectre_lora import SPECTRELoRA
 from src.marina.lora.load_utils import load_base_ckpt_into_lora_model
 from src.marina.data.dataset import SPECTREDataModule
@@ -70,7 +70,7 @@ def main():
     # build a common results path
     today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     results_path = os.path.join(DATASET_ROOT, "results", args.experiment_name, today)
-    final_path = os.path.join(CODE_ROOT, "results", args.experiment_name, today)
+    final_path = os.path.join(PVC_ROOT, "results", args.experiment_name, today)
     experiment_id = f"{args.experiment_name}_{today}"
 
     # rank 0: create outputs, logging, wandb
