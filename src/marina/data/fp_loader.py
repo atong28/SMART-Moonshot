@@ -49,7 +49,7 @@ class _PIDAwareLMDB:
                 self.path,
                 readonly=True,
                 lock=False,
-                readahead=True,
+                readahead=False,
                 subdir=True,
                 max_readers=4096,
             )
@@ -232,6 +232,7 @@ class EntropyFPLoader(FPLoader):
 
         bitinfos, counts = zip(*filtered)
         counts = np.asarray(counts)
+        print(f"Found {len(bitinfos)} features with radius <= {self.max_radius}.")
 
         # retrieval size = #smiles in retrieval index
         retrieval_size = len(load_smiles_index(self.retrieval_path))

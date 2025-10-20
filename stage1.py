@@ -129,7 +129,7 @@ def main():
         args.requires = args.train_adapter_for_combo
         data_module = SPECTREDataModule(args, fp_loader)
     else:
-        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'))
+        fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'), max_radius=2)
         model = SPECTRE(args, fp_loader)
         data_module = SPECTREDataModule(args, fp_loader)
 

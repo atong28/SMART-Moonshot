@@ -33,7 +33,7 @@ class _LMDBModalityStore:
                 self.path,
                 readonly=True,
                 lock=False,        # many readers, no writer
-                readahead=True,
+                readahead=False,
                 max_readers=4096,
                 subdir=True
             )
