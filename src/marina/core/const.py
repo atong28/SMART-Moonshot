@@ -17,10 +17,12 @@ if 'nas-gpu' in __file__:
     print('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
     DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
+    WANDB_API_KEY_FILE = '/data/nas-gpu/wang/atong/SMART-Moonshot/wandb_api_key.json'
 else:
     print('Detected nautilus setup')
-    CODE_ROOT = '/root/gurusmart/Moonshot'
+    CODE_ROOT = '/code'
     DATASET_ROOT = '/workspace'
+    WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
 
 DO_NOT_OVERRIDE = [
     'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires', 'train_lora',

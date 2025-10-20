@@ -49,7 +49,7 @@ from src.marina.data.fp_loader import make_fp_loader
 from src.marina.arch.model import SPECTRE
 from src.marina.train import train
 from src.marina.test import test
-from src.marina.core.const import DATASET_ROOT, CODE_ROOT
+from src.marina.core.const import DATASET_ROOT, CODE_ROOT, WANDB_API_KEY_FILE
 from src.marina.lora.spectre_lora import SPECTRELoRA
 from src.marina.lora.load_utils import load_base_ckpt_into_lora_model
 from src.marina.data.dataset import SPECTREDataModule
@@ -85,7 +85,7 @@ def main():
 
         # login to wandb (optional hardening)
         try:
-            with open("wandb_api_key.json") as kf:
+            with open(WANDB_API_KEY_FILE) as kf:
                 key = json.load(kf)["key"]
             wandb.login(key=key)
             wandb_run = wandb.init(
