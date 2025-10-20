@@ -8,12 +8,12 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.utilities.model_summary import summarize
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from .core.settings import SPECTREArgs
+from .core.settings import MARINAArgs
 from .data.dataset import SPECTREDataModule
 from .arch.model import SPECTRE
 from .test import test
 
-def train(args: SPECTREArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, wandb_run = None):
+def train(args: MARINAArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, wandb_run = None):
     torch.set_float32_matmul_precision('medium')
     if args.debug:
         args.epochs = 5

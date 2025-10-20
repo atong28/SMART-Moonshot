@@ -12,13 +12,13 @@ import numpy as np
 import random
 import torch
 
-from src.spectre.core.args import parse_args
-from src.spectre.core.settings import SPECTREArgs
-from src.spectre.data.fp_loader import EntropyFPLoader
-from src.spectre.arch.model import SPECTRE
-from src.spectre.test import test
-from src.spectre.core.const import DATASET_ROOT, CODE_ROOT
-from src.spectre.data.dataset import SPECTREDataModule
+from src.marina.core.args import parse_args
+from src.marina.core.settings import MARINAArgs
+from src.marina.data.fp_loader import EntropyFPLoader
+from src.marina.arch.model import SPECTRE
+from src.marina.test import test
+from src.marina.core.const import DATASET_ROOT, CODE_ROOT
+from src.marina.data.dataset import SPECTREDataModule
 
 # ----------------------------
 # Combos (as you specified)
@@ -84,7 +84,7 @@ def parse_combo_string(s):
     return out
 
 def main():
-    args: SPECTREArgs = parse_args()
+    args: MARINAArgs = parse_args()
     # We only do testing here; ignore any train flag that slips in
     args.train = False
     args.test = True
@@ -126,7 +126,7 @@ def main():
             continue
 
         # Per-combo shallow clone of args (no mutation of original object)
-        # Since SPECTREArgs is a simple namespace from argparse, direct copy is fine.
+        # Since MARINAArgs is a simple namespace from argparse, direct copy is fine.
         from copy import deepcopy
         local_args = deepcopy(args)
         local_args.input_types = list(combo)

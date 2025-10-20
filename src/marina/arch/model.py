@@ -7,7 +7,7 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
-from ..core.settings import SPECTREArgs
+from ..core.settings import MARINAArgs
 from ..core.utils import L1
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
@@ -60,7 +60,7 @@ class CrossAttentionBlock(nn.Module):
         return out
 
 class SPECTRE(pl.LightningModule):
-    def __init__(self, args: SPECTREArgs, fp_loader: FPLoader):
+    def __init__(self, args: MARINAArgs, fp_loader: FPLoader):
         super().__init__()
         
         self.args = args

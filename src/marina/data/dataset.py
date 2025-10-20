@@ -13,7 +13,7 @@ from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
 from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
-from ..core.settings import SPECTREArgs
+from ..core.settings import MARINAArgs
 from .fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
 from .modality_dropout_scheduler import ModalityDropoutScheduler
@@ -21,7 +21,7 @@ from .modality_dropout_scheduler import ModalityDropoutScheduler
 logger = logging.getLogger('lightning')
 
 class SPECTREDataset(Dataset):
-    def __init__(self, args: SPECTREArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
+    def __init__(self, args: MARINAArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
         try:
             self.args = args  # <-- store args
 
@@ -162,7 +162,7 @@ def collate(batch):
     return batch_inputs, batch_fps
 
 class SPECTREDataModule(pl.LightningDataModule):
-    def __init__(self, args: SPECTREArgs, fp_loader: FPLoader):
+    def __init__(self, args: MARINAArgs, fp_loader: FPLoader):
         super().__init__()
         self.args = args
         self.batch_size = args.batch_size

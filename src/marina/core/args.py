@@ -3,7 +3,7 @@ import os
 import json
 
 from .const import DO_NOT_OVERRIDE
-from .settings import SPECTREArgs
+from .settings import MARINAArgs
 
 def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):
     if default:
@@ -12,7 +12,7 @@ def add_bool_flag(parser: argparse.ArgumentParser, name: str, default: bool):
         parser.add_argument(f'--{name}', dest=name, action='store_true')
     parser.set_defaults(**{name: default})
 
-def parse_args() -> SPECTREArgs:
+def parse_args() -> MARINAArgs:
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--experiment_name')
@@ -114,4 +114,4 @@ def parse_args() -> SPECTREArgs:
             setattr(args, k, v)
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
 
-    return SPECTREArgs(**args_dict)
+    return MARINAArgs(**args_dict)

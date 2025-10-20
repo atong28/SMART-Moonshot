@@ -29,16 +29,16 @@ import wandb
 import numpy as np
 import random
 import torch
-from src.spectre.core.args import parse_args
-from src.spectre.core.settings import SPECTREArgs
-from src.spectre.data.fp_loader import EntropyFPLoader
-from src.spectre.arch.model import SPECTRE
-from src.spectre.train import train
-from src.spectre.test import test
-from src.spectre.core.const import DATASET_ROOT, CODE_ROOT
-from src.spectre.lora.spectre_lora import SPECTRELoRA
-from src.spectre.lora.load_utils import load_base_ckpt_into_lora_model
-from src.spectre.data.dataset import SPECTREDataModule
+from src.marina.core.args import parse_args
+from src.marina.core.settings import MARINAArgs
+from src.marina.data.fp_loader import EntropyFPLoader
+from src.marina.arch.model import SPECTRE
+from src.marina.train import train
+from src.marina.test import test
+from src.marina.core.const import DATASET_ROOT, CODE_ROOT
+from src.marina.lora.spectre_lora import SPECTRELoRA
+from src.marina.lora.load_utils import load_base_ckpt_into_lora_model
+from src.marina.data.dataset import SPECTREDataModule
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -47,7 +47,7 @@ def seed_everything(seed):
     np.random.seed(seed)
     random.seed(seed)
 
-args: SPECTREArgs = parse_args()
+args: MARINAArgs = parse_args()
 seed_everything(args.seed)
 
 # build a common results path

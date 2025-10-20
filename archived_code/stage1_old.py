@@ -30,13 +30,13 @@ import numpy as np
 import random
 import torch
 
-from src.spectre.args import parse_args
-from src.spectre.settings import SPECTREArgs
-from src.spectre.fp_loader import EntropyFPLoader
-from src.spectre.model import SPECTRE
-from src.spectre.train import train
-from src.spectre.test import test
-from src.spectre.const import DATASET_ROOT, CODE_ROOT
+from src.marina.args import parse_args
+from src.marina.settings import SPECTREArgs
+from src.marina.fp_loader import EntropyFPLoader
+from src.marina.model import SPECTRE
+from src.marina.train import train
+from src.marina.test import test
+from src.marina.const import DATASET_ROOT, CODE_ROOT
 from src.dataset.spectre import SPECTREDataModule
 
 def seed_everything(seed):
