@@ -36,7 +36,6 @@ def cm(
     loss: torch.Tensor,
     loss_fn,
     thresh: float = 0.0,
-    query_idx_in_rankingset=None,
     no_ranking: bool = False,
 ):
     """
@@ -100,7 +99,6 @@ def cm(
     rank_res = ranker.batched_rank(
         queries=queries,
         truths=fp_label,
-        query_idx_in_rankingset=query_idx_in_rankingset,
         use_jaccard=False,
     )
 

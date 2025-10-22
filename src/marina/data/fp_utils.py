@@ -266,6 +266,8 @@ def build_rankingset_csr(
     """
     Build a torch.sparse_csr_tensor with shape (num_retrieval, num_features)
     where values are 0/1 presence for each retrieval SMILES.
+
+    Rows are L2-normalized to unit length (so cosine similarity = dot product).
     """
     smiles_map = load_smiles_index(retrieval_path)
     ordered = sorted(smiles_map.items(), key=lambda kv: kv[0])  # consistent row order
@@ -289,7 +291,11 @@ def build_rankingset_csr(
             initargs=(radius, bitinfo_to_col),
         ) as pool:
             for res in tqdm(
-                pool.imap_unordered(_worker_row_nonzeros, [(i, smi) for i, (_, smi) in enumerate(ordered)], chunksize=64),
+                pool.imap_unordered(
+                    _worker_row_nonzeros,
+                    [(i, smi) for i, (_, smi) in enumerate(ordered)],
+                    chunksize=64,
+                ),
                 total=num_rows,
                 desc="Building CSR rows",
             ):
@@ -300,17 +306,23 @@ def build_rankingset_csr(
 
     crow_indices = [0]
     col_indices: List[int] = []
-    values: List[int] = []
+    values: List[float] = []
     nnz_so_far = 0
+
     for _, cols in rows_cols:
+        if not cols:
+            crow_indices.append(nnz_so_far)
+            continue
+        nnz = len(cols)
         col_indices.extend(cols)
-        values.extend([1] * len(cols))
-        nnz_so_far += len(cols)
+        inv_len = 1.0 / math.sqrt(nnz)
+        values.extend([inv_len] * nnz)
+        nnz_so_far += nnz
         crow_indices.append(nnz_so_far)
 
     crow = torch.tensor(crow_indices, dtype=torch.int64)
     cols = torch.tensor(col_indices, dtype=torch.int64)
-    vals = torch.tensor(values, dtype=torch.int8)  # 0/1; small dtype
-
+    vals = torch.tensor(values, dtype=torch.float32)
     return torch.sparse_csr_tensor(crow, cols, vals, size=(num_rows, num_cols))
+
 

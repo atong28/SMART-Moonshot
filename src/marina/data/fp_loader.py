@@ -6,7 +6,8 @@ import io
 import time
 import pickle
 import argparse
-from typing import Optional, Dict
+import json
+from typing import Optional, Dict, List, Union
 
 import numpy as np
 import torch
@@ -177,6 +178,87 @@ class EntropyFPLoader(FPLoader):
         filepath = os.path.join(self.dataset_root, "Fragments", f"{idx}.pt")
         return torch.load(filepath, weights_only=True)
 
+    # ---------- input SMILES iterator ----------
+
+    def _iter_smiles_from_path(self, path: str):
+        """
+        Yields SMILES strings from a file:
+          - .txt: one SMILES per non-empty line
+          - .json: list[str], or {'smiles': [...]}, or dict of id->smiles (values used)
+          - .pkl/.pickle: same as .json (list[str] / dict / {'smiles': [...]})
+          - .csv: uses 'smiles' column if present; else first column
+        """
+        ext = os.path.splitext(path)[1].lower()
+        if ext in {".txt"}:
+            with open(path, "r", encoding="utf-8") as f:
+                for line in f:
+                    s = line.strip()
+                    if s:
+                        yield s
+            return
+
+        if ext in {".json"}:
+            with open(path, "r", encoding="utf-8") as f:
+                obj = json.load(f)
+            if isinstance(obj, list):
+                for s in obj:
+                    if isinstance(s, str) and s:
+                        yield s
+            elif isinstance(obj, dict):
+                if "smiles" in obj and isinstance(obj["smiles"], list):
+                    for s in obj["smiles"]:
+                        if isinstance(s, str) and s:
+                            yield s
+                else:
+                    for v in obj.values():
+                        if isinstance(v, str) and v:
+                            yield v
+            else:
+                raise ValueError(f"Unrecognized JSON structure in {path}")
+            return
+
+        if ext in {".pkl", ".pickle"}:
+            with open(path, "rb") as f:
+                obj = pickle.load(f)
+            if isinstance(obj, list):
+                for s in obj:
+                    if isinstance(s, str) and s:
+                        yield s
+            elif isinstance(obj, dict):
+                if "smiles" in obj and isinstance(obj["smiles"], list):
+                    for s in obj["smiles"]:
+                        if isinstance(s, str) and s:
+                            yield s
+                else:
+                    for v in obj.values():
+                        if isinstance(v, str) and v:
+                            yield v
+            else:
+                raise ValueError(f"Unrecognized PKL structure in {path}")
+            return
+
+        if ext in {".csv"}:
+            with open(path, "r", encoding="utf-8") as f:
+                header = f.readline()
+                if not header:
+                    return
+                cols = [c.strip() for c in header.strip().split(",")]
+                try:
+                    smiles_idx = cols.index("smiles")
+                except ValueError:
+                    smiles_idx = 0  # fall back to first column
+                for line in f:
+                    if not line.strip():
+                        continue
+                    parts = line.rstrip("\n").split(",")
+                    if smiles_idx < len(parts):
+                        s = parts[smiles_idx].strip()
+                        if s:
+                            yield s
+            return
+
+        raise ValueError(f"Unsupported input format for {path}")
+
     # ---------- retrieval prep ----------
 
     def _counts_path(self, radius: int) -> str:
@@ -277,6 +359,7 @@ class EntropyFPLoader(FPLoader):
         return torch.from_numpy(mfp)
 
     def build_mfp_for_smiles(self, smiles: str, ignore_atoms=None) -> torch.Tensor:
+        # Legacy dense tensor builder (kept for compatibility)
         from .fp_utils import count_circular_substructures  # local import to avoid cycles
         if self.out_dim is None or self.max_radius is None:
             raise RuntimeError("Call setup() first.")
@@ -301,6 +384,51 @@ class EntropyFPLoader(FPLoader):
                 if col is not None:
                     mfp[col] = 1.0
         return torch.from_numpy(mfp)
+
+    # --- NEW: sparse indices helpers ---
+
+    def build_fp_indices_for_smiles(self, smiles: str, ignore_atoms=None) -> Optional[List[int]]:
+        """
+        Returns sorted list of 0-indexed bit positions that are 1 for this SMILES.
+        If parsing fails or any error occurs, returns None.
+        """
+        from .fp_utils import count_circular_substructures  # local import to avoid cycles
+        if self.out_dim is None or self.max_radius is None:
+            raise RuntimeError("Call setup() first.")
+        try:
+            present = count_circular_substructures(smiles, radius=self.max_radius, ignore_atoms=ignore_atoms or [])
+        except Exception:
+            return None
+        if not present:
+            return []
+        cols = set()
+        for bitinfo in present.keys():
+            col = self.bitinfo_to_fp_index_map.get(bitinfo)
+            if col is not None:
+                cols.add(col)
+        return sorted(cols)
+
+    def build_fp_dict_for_smiles(self, smiles_list, ignore_atoms=None) -> Dict[str, Optional[List[int]]]:
+        """
+        Given an iterable of SMILES strings, returns {smiles: List[int] | None}
+        where List[int] are the 0-indexed bit positions set to 1. If parsing fails,
+        the value is None. Deduplicates identical SMILES.
+        """
+        if self.out_dim is None or self.max_radius is None:
+            raise RuntimeError("Call setup() first.")
+
+        ignore_atoms = ignore_atoms or []
+        seen = set()
+        out: Dict[str, Optional[List[int]]] = {}
+        for smi in smiles_list:
+            if not isinstance(smi, str) or not smi:
+                continue
+            if smi in seen:
+                continue
+            seen.add(smi)
+            indices = self.build_fp_indices_for_smiles(smi, ignore_atoms=ignore_atoms)
+            out[smi] = indices  # may be None
+        return out
 
     # ---------- retrieval rankingset ----------
 
@@ -373,6 +501,17 @@ def _cli():
     p_frag.add_argument("--radius", type=int, default=6)
     p_frag.add_argument("--num-procs", type=int, default=0)
 
+    # 4) Build FP dict for a list of SMILES (stores indices; parse errors → None)
+    p_sfps = sub.add_parser("smiles-fps", help="Build {smiles: List[int]|None} of 1-bit indices and save to a pickle.")
+    p_sfps.add_argument("--smiles", required=True, help="Path to txt/json/pkl/csv with SMILES.")
+    p_sfps.add_argument("--out", required=True, help="Output pickle path (will contain {smiles: List[int] or None}).")
+    p_sfps.add_argument("--retrieval", required=True, help="Path to retrieval index (.pkl/.json) used for feature selection.")
+    p_sfps.add_argument("--dataset-root", default=DATASET_ROOT)
+    p_sfps.add_argument("--out-dim", default=16384, help="int or 'inf'")
+    p_sfps.add_argument("--radius", type=int, default=6)
+    p_sfps.add_argument("--ignore-atoms", default="", help="Comma-separated atom indices to ignore (rare; usually leave empty).")
+    p_sfps.add_argument("--num-procs", type=int, default=0, help="For counts/CSR prep if needed.")
+
     args = parser.parse_args()
 
     if args.cmd == "prepare-counts":
@@ -399,6 +538,36 @@ def _cli():
             index_path=args.index, out_dir=args.out_dir, radius=args.radius, num_procs=args.num_procs
         )
         print(f"Fragments written under {os.path.join(args.out_dir, 'Fragments')}")
+
+    elif args.cmd == "smiles-fps":
+        out_dim = args.out_dim
+        if isinstance(out_dim, str) and out_dim.lower() == "inf":
+            out_dim = "inf"
+        else:
+            out_dim = int(out_dim)
+
+        ignore_atoms = []
+        if args.ignore_atoms.strip():
+            ignore_atoms = [int(x) for x in args.ignore_atoms.split(",") if x.strip().isdigit()]
+
+        loader = EntropyFPLoader(dataset_root=args.dataset_root, retrieval_path=args.retrieval)
+        # Ensures selection is available (computes counts if missing)
+        loader.setup(out_dim, args.radius, retrieval_path=args.retrieval, num_procs=args.num_procs)
+
+        smiles_iter = loader._iter_smiles_from_path(args.smiles)
+        fp_dict = loader.build_fp_dict_for_smiles(smiles_iter, ignore_atoms=ignore_atoms)
+
+        # Save as a pickle of {smiles: List[int] | None}
+        out_dir = os.path.dirname(os.path.abspath(args.out))
+        if out_dir:
+            os.makedirs(out_dir, exist_ok=True)
+        with open(args.out, "wb") as f:
+            pickle.dump(fp_dict, f)
+
+        # Simple summary
+        n_total = len(fp_dict)
+        n_none = sum(1 for v in fp_dict.values() if v is None)
+        print(f"Wrote {n_total} entries to {args.out} ({n_none} parse failures).")
 
 
 if __name__ == "__main__":

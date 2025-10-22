@@ -230,7 +230,7 @@ class SPECTRE(pl.LightningModule):
         loss = self.loss(logits, fps)
         metrics, _ = cm(
             logits, fps, self.ranker, loss, self.loss,
-            thresh=0.0, query_idx_in_rankingset=batch_idx, no_ranking=True
+            thresh=0.0, no_ranking=True
         )
         input_type_key = "all_inputs"
         if dataloader_idx is not None and dataloader_idx > 0:
@@ -249,7 +249,7 @@ class SPECTRE(pl.LightningModule):
         loss = self.loss(logits, fps)
         metrics, _ = cm(
             logits, fps, self.ranker, loss, self.loss,
-            thresh=0.0, query_idx_in_rankingset=None, no_ranking=False
+            thresh=0.0, no_ranking=False
         )
         
         # Determine input type based on dataloader_idx

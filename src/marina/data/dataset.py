@@ -170,7 +170,7 @@ class SPECTREDataModule(pl.LightningDataModule):
         self.collate_fn = collate
         self.persistent_workers = bool(args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
-        self.test_types = [args.input_types] + [[input_type] for input_type in (set(args.input_types) - {'mw', 'formula'})]
+        self.test_types = [args.input_types] + [[input_type, 'mw'] for input_type in (set(args.input_types) - {'mw'})]
         
         self._fit_is_setup = False
         self._test_is_setup = False

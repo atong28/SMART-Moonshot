@@ -50,10 +50,6 @@ class RankingSet(torch.nn.Module):
         self.register_buffer("data", store, persistent=False)
         self.logger.info(f"[RankingSet] Initialized with {self.data.size(0)} sample(s); metric={self.metric}")
 
-        # Precompute row-squared norms for Tanimoto (works for dense or CSR)
-        if self.metric == "tanimoto":
-            self.register_buffer("row_sq", RankingSet._row_sqnorms(self.data), persistent=False)
-
     @property
     def device(self) -> torch.device:
         return self.data.device
@@ -81,33 +77,6 @@ class RankingSet(torch.nn.Module):
         return tuple(nonzero[:, 0].tolist())
 
     # -------- Internal helpers --------
-
-    @staticmethod
-    def _row_sqnorms(mat: torch.Tensor) -> torch.Tensor:
-        """
-        Row-wise squared L2 norms for dense or CSR sparse tensors.
-        Returns (N,) float32 on same device.
-        """
-        if mat.layout == torch.sparse_csr:
-            # Compute per-row sum of squares from CSR structure
-            crow = mat.crow_indices()
-            vals = mat.values()
-            v2 = vals * vals
-            # segment sum over rows
-            # Build a row index for each value via crow expansion
-            # (crow[i]:crow[i+1]) range belongs to row i
-            row_counts = crow[1:] - crow[:-1]                 # (N,)
-            row_ids = torch.repeat_interleave(
-                torch.arange(row_counts.numel(), device=mat.device, dtype=torch.int64),
-                row_counts
-            )                                                 # (nnz,)
-            row_sq = torch.zeros(row_counts.numel(), device=mat.device, dtype=mat.dtype)
-            row_sq.scatter_add_(0, row_ids, v2)
-            return row_sq
-        else:
-            # dense
-            return (mat * mat).sum(dim=1)
-
     def _sims(self, queries: torch.Tensor) -> torch.Tensor:
         q = queries.to(self.device)
 
@@ -150,7 +119,6 @@ class RankingSet(torch.nn.Module):
         queries: torch.Tensor,
         truths: torch.Tensor,
         thresh: torch.Tensor,
-        query_idx_in_rankingset: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Count, per query, how many entries in `data` meet/exceed the Jaccard threshold.
@@ -173,7 +141,6 @@ class RankingSet(torch.nn.Module):
         queries: torch.Tensor,
         truths: torch.Tensor,
         thresh: torch.Tensor,
-        query_idx_in_rankingset: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Count, per query, how many entries in `data` meet/exceed the *cosine* threshold.
@@ -201,7 +168,6 @@ class RankingSet(torch.nn.Module):
         self,
         queries: torch.Tensor,
         truths: torch.Tensor,
-        query_idx_in_rankingset: Optional[torch.Tensor] = None,
         use_jaccard: bool = False,
     ) -> torch.Tensor:
         """
@@ -219,11 +185,11 @@ class RankingSet(torch.nn.Module):
                 intersection = torch.sum(queries * truths, dim=1)
                 union = torch.sum((queries + truths) > 0, dim=1).clamp_min(1)
                 thresh = intersection / union  # (Q,)
-                return self.jaccard_rank(self.data, queries, truths, thresh, query_idx_in_rankingset)
+                return self.jaccard_rank(self.data, queries, truths, thresh)
             if self.metric == "cosine":
                 qn = F.normalize(queries, dim=1, p=2.0)
                 tn = F.normalize(truths, dim=1, p=2.0)
                 thresh = torch.sum((qn * tn), dim=1, keepdim=True).T  # (1, Q)
-                return self.dot_prod_rank(self.data, qn, tn, thresh, query_idx_in_rankingset)
+                return self.dot_prod_rank(self.data, qn, tn, thresh)
             else:
                 raise ValueError(f"Unknown metric: {self.metric}")
