@@ -46,44 +46,16 @@ class MARINAArgs:
     save_params: bool = True
     
     hybrid_early_stopping: bool = False
-    modality_dropout_scheduler: Optional[str] = None # None, 'constant', 'scheduled'
 
     # training args
     lr: float = 2e-4
     eta_min: float = 1e-5
-    noam_factor: float = 1.0
     weight_decay: float = 0.0
-    l1_decay: float = 0.0
-    scheduler: Optional[Literal['attention', 'cosine']] = 'cosine'
-    warm_up_steps: int = 0
+    scheduler: Optional[Literal['cosine']] = 'cosine'
     freeze_weights: bool = False
     use_jaccard: bool = False
 
     visualize: bool = False
-    
-    # LoRA core
-    train_lora: bool = False
-    lora_rank_qkv: int = 8
-    lora_rank_out: int = 8
-    lora_rank_fc: int = 4
-    lora_scale_qkv: float = 1.0
-    lora_scale_out: float = 1.0
-    lora_scale_fc: float = 1.0
-    lora_enable_attn: bool = True
-    lora_enable_fc: bool = True
-    lora_enable_self_attn: bool = False
-
-    # Adapter training
-    adapter_dir: str = "adapters"
-    train_adapter_for_combo: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
-        default_factory=lambda: ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
-    )
-    lora_only: bool = True
-    lora_lr: float = 1e-3
-    lora_weight_decay: float = 0.0
-    full_mix_ratio: float = 0.2
-    distill_full_alpha: float = 0.1
-    distill_target: str = "logits"  # or "embedding"
 
     # hybrid loss
     lambda_hybrid: float = 0.0

@@ -10,24 +10,28 @@ from typing import Any, Optional
 
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
+import torch.distributed as dist
 import pytorch_lightning as pl
 
-from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT
+from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT, NON_SPECTRAL_INPUTS
 from ..core.settings import MARINAArgs
 from .fp_loader import FPLoader
 from .inputs import SpectralInputLoader, MFInputLoader
-from .modality_dropout_scheduler import ModalityDropoutScheduler
 
-logger = logging.getLogger('lightning')
+logger = logging.getLogger("lightning")
+if dist.is_initialized():
+    rank = dist.get_rank()
+    if rank != 0:
+        logger.setLevel(logging.WARNING)
 
 class SPECTREDataset(Dataset):
     def __init__(self, args: MARINAArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
         try:
-            self.args = args  # <-- store args
-
+            self.args = args
+            self.split = split
             if split != 'train':
                 args.requires = args.input_types
-            logger.info(f'[SPECTREDataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
+            logger.debug(f'[SPECTREDataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
             self.input_types = args.input_types if override_input_types is None else override_input_types
             self.requires = args.requires if override_input_types is None else override_input_types
 
@@ -39,45 +43,31 @@ class SPECTREDataset(Dataset):
                 any(
                     entry[f'has_{input_type}']
                     for input_type in self.input_types
-                    if input_type not in ('mw', 'formula')
+                    if input_type not in NON_SPECTRAL_INPUTS
                 )
             }
             data_len = len(data)
-            logger.info(f'[SPECTREDataset] Requiring the following items to be present: {self.requires}')
+            logger.debug(f'[SPECTREDataset] Requiring the following items to be present: {self.requires}')
             data = {
                 idx: entry for idx, entry in data.items()
                 if all(entry[f'has_{dtype}'] for dtype in self.requires)
             }
-            logger.info(f'[SPECTREDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
-            logger.info(f'[SPECTREDataset] Dataset size: {len(data)}')
+            logger.debug(f'[SPECTREDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
+            logger.debug(f'[SPECTREDataset] Dataset size: {len(data)}')
             if args.debug and len(data) > DEBUG_LEN:
-                logger.info(f'[SPECTREDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
+                logger.debug(f'[SPECTREDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
                 data = dict(islice(data.items(), DEBUG_LEN))
 
             if len(data) == 0:
                 raise RuntimeError(f'[SPECTREDataset] Dataset split {split} is empty!')
             
-            self.jittering = args.jittering
+            self.jittering = args.jittering if split == 'train' else 0.0
             self.spectral_loader = SpectralInputLoader(DATASET_ROOT, data, split=split)
             self.mfp_loader = MFInputLoader(fp_loader)
             
             self.data = list(data.items())
 
-            # Initialize modality dropout scheduler if requested
-            if self.args.modality_dropout_scheduler:
-                sched_keys = tuple(f'has_{it}' for it in self.input_types if it not in ('mw', 'formula'))
-                self.drop_scheduler = ModalityDropoutScheduler(
-                    dataset_entries=self.data,
-                    keys=sched_keys,
-                    mode=self.args.modality_dropout_scheduler,  # "constant" or "scheduled"
-                    total_phases=2.0,
-                    beta_end=1.5,
-                    enforce_constraints=True
-                )
-            else:
-                self.drop_scheduler = None
-
-            logger.info('[SPECTREDataset] Setup complete!')
+            logger.debug('[SPECTREDataset] Setup complete!')
         
         except Exception:
             logger.error(traceback.format_exc())
@@ -86,38 +76,30 @@ class SPECTREDataset(Dataset):
     
     def __len__(self):
         return len(self.data)
-
-    def set_phase(self, phase: float):
-        """Forward curriculum phase to the modality dropout scheduler, if enabled."""
-        if hasattr(self, "drop_scheduler") and self.drop_scheduler is not None:
-            if hasattr(self.drop_scheduler, "set_phase"):
-                self.drop_scheduler.set_phase(phase)
     
     def __getitem__(self, idx):
         data_idx, data_obj = self.data[idx]
-        if self.args.modality_dropout_scheduler and self.drop_scheduler is not None:
-            input_types = set(self.drop_scheduler.sample_kept_modalities(
-                data_obj, requires=set(self.requires)      # e.g. {'hsqc'} or empty set
-            ))
-        else:
-            available_types = {
-                'hsqc': data_obj['has_hsqc'],
-                'c_nmr': data_obj['has_c_nmr'],
-                'h_nmr': data_obj['has_h_nmr'],
-                'mass_spec': data_obj['has_mass_spec']
-            }
-            drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
-            assert len(drop_candidates) > 0, 'Found an empty entry!'
-            
-            always_keep = random.choice(drop_candidates)
+        if self.split != 'train':
             input_types = set(self.input_types)
-            for input_type in self.input_types:
-                if not data_obj[f'has_{input_type}']:
-                    input_types.remove(input_type)
-                elif (input_type != always_keep and 
-                    input_type not in self.requires and 
-                    random.random() < DROP_PERCENTAGE[input_type]):
-                    input_types.remove(input_type)
+            return self.spectral_loader.load(data_idx, input_types), self.mfp_loader.load(data_idx)
+        available_types = {
+            'hsqc': data_obj['has_hsqc'],
+            'c_nmr': data_obj['has_c_nmr'],
+            'h_nmr': data_obj['has_h_nmr'],
+            'mass_spec': data_obj['has_mass_spec']
+        }
+        drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
+        assert len(drop_candidates) > 0, 'Found an empty entry!'
+        
+        always_keep = random.choice(drop_candidates)
+        input_types = set(self.input_types)
+        for input_type in self.input_types:
+            if not data_obj[f'has_{input_type}']:
+                input_types.remove(input_type)
+            elif (input_type != always_keep and 
+                input_type not in self.requires and 
+                random.random() < DROP_PERCENTAGE[input_type]):
+                input_types.remove(input_type)
         return self.spectral_loader.load(data_idx, input_types, jittering = self.jittering), self.mfp_loader.load(data_idx)
 
 def collate(batch):
@@ -128,36 +110,24 @@ def collate(batch):
     dicts, fps = zip(*batch)
     batch_inputs = {}
 
-    # 1) Handle all the *sequence* modalities
     for mod in INPUTS_CANONICAL_ORDER:
-        if mod == "mw":
-            # skip MW here—handle below
+        if mod in NON_SPECTRAL_INPUTS:
             continue
-
         seqs = [d.get(mod) for d in dicts]
-        # if none of the samples have this modality, skip it entirely
         if all(x is None for x in seqs):
             continue
-
-        # replace missing with empty (0×D) tensors
-        # find the first real tensor to infer D
         D = next(x.shape[1] for x in seqs if isinstance(x, torch.Tensor) and x.ndim == 2)
         seqs = [
             x if (isinstance(x, torch.Tensor) and x.ndim == 2) else torch.zeros((0, D), dtype=torch.float)
             for x in seqs
         ]
-        # now pad them into a (B, L_mod, D) tensor
         batch_inputs[mod] = pad_sequence(seqs, batch_first=True)
 
-    # 2) Handle MW *scalar* specially
     mw_vals = [d.get("mw") for d in dicts]
     if any(v is not None for v in mw_vals):
-        # replace None with 0.0 (or another sentinel if you like)
         mw_floats = [float(v) if v is not None else 0.0 for v in mw_vals]
-        # create a (B,) tensor of scalars
         batch_inputs["mw"] = torch.tensor(mw_floats, dtype=torch.float)
 
-    # 4) Stack your fingerprints
     batch_fps = torch.stack(fps, dim=0)
     return batch_inputs, batch_fps
 
@@ -170,8 +140,8 @@ class SPECTREDataModule(pl.LightningDataModule):
         self.collate_fn = collate
         self.persistent_workers = bool(args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
-        self.test_types = [args.input_types] + [[input_type, 'mw'] for input_type in (set(args.input_types) - {'mw'})]
-        
+        mods = [m for m in args.input_types if m not in NON_SPECTRAL_INPUTS]
+        self.test_types = [args.input_types] + [[m] + list(NON_SPECTRAL_INPUTS) for m in mods]
         self._fit_is_setup = False
         self._test_is_setup = False
     

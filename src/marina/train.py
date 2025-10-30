@@ -1,11 +1,8 @@
 import logging
-import os
 import torch
 import pytorch_lightning as pl
 import pytorch_lightning.callbacks as cb
-import sys
 from pytorch_lightning.loggers import WandbLogger
-from pytorch_lightning.utilities.model_summary import summarize
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from .core.settings import MARINAArgs
@@ -48,7 +45,6 @@ def train(args: MARINAArgs, data_module: SPECTREDataModule, model: SPECTRE, resu
     logger.info("[Main] Begin Training!")
     trainer.fit(model, datamodule = data_module)
 
-    # Ensure all processes synchronize before switching to test mode
     trainer.strategy.barrier()
 
     if args.test and trainer.local_rank == 0:

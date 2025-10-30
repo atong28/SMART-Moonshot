@@ -7,6 +7,7 @@ import pickle
 import argparse
 import json
 from typing import Optional, Dict, List
+import logging
 
 import numpy as np
 import torch
@@ -23,10 +24,6 @@ from .fp_utils import (
     generate_fragments_for_training,
     count_circular_substructures,
 )
-
-# ----------------------------------------------------------------------
-# Internal: PID-aware read-only LMDB wrapper (lazy-open per process)
-# ----------------------------------------------------------------------
 
 class _PIDAwareLMDB:
     """
@@ -69,9 +66,6 @@ class _PIDAwareLMDB:
             raise KeyError(f"Key {key_str} not found in {self.path}")
         return bytes(buf)  # header parse needs a tiny copy of header anyway
 
-# ----------------------------------------------------------------------
-# Public API
-# ----------------------------------------------------------------------
 class FPLoader:
     def __init__(self) -> None:
         raise NotImplementedError()
@@ -242,8 +236,6 @@ class EntropyFPLoader(FPLoader):
 
         raise ValueError(f"Unsupported input format for {path}")
 
-    # ---------- retrieval prep ----------
-
     def _counts_path(self, radius: int) -> str:
         return os.path.join(self.dataset_root, f"count_hashes_under_radius_{radius}.pkl")
 
@@ -259,17 +251,16 @@ class EntropyFPLoader(FPLoader):
         write_counts(counter, counts_path)
         self.hashed_bits_count = counter
 
-    # ---------- setup (feature selection) ----------
-
     def setup(self, out_dim, max_radius, retrieval_path: Optional[str] = None, num_procs: int = 0):
-        print("Setting up EntropyFPLoader...")
+        logger = logging.getLogger("lightning")
+        logger.info("Setting up EntropyFPLoader...")
         start = time.time()
 
         if retrieval_path is not None:
             self.retrieval_path = retrieval_path
 
         if self.max_radius == max_radius and self.out_dim == out_dim and self.bitinfo_to_fp_index_map:
-            print("EntropyFPLoader is already setup.")
+            logger.info("EntropyFPLoader is already setup.")
             return
 
         self.max_radius = int(max_radius)
@@ -286,7 +277,7 @@ class EntropyFPLoader(FPLoader):
 
         bitinfos, counts = zip(*filtered)
         counts = np.asarray(counts)
-        print(f"Found {len(bitinfos)} features with radius <= {self.max_radius}.")
+        logger.debug(f"Found {len(bitinfos)} features with radius <= {self.max_radius}.")
 
         retrieval_size = len(load_smiles_index(self.retrieval_path))
         ent = compute_entropy(counts, total_dataset_size=retrieval_size)
@@ -300,14 +291,12 @@ class EntropyFPLoader(FPLoader):
         self.fp_index_to_bitinfo_map = {v: k for k, v in self.bitinfo_to_fp_index_map.items()}
 
         elapsed = time.time() - start
-        print(f"Done! Selected {self.out_dim} features in {elapsed:.2f}s.")
-
-    # ---------- per-sample / new SMILES ----------
+        logger.info(f"Done! Selected {self.out_dim} features in {elapsed:.2f}s.")
 
     def build_mfp(self, idx: int) -> torch.Tensor:
         if self.out_dim is None:
             raise RuntimeError("Call setup() first.")
-        cols = self._load_fragment_indices(idx)             # np.int32 view (zero-copy)
+        cols = self._load_fragment_indices(idx)
         mfp = np.zeros(self.out_dim, dtype=np.float32)
         if cols.size > 0:
             mfp[cols] = 1.0
@@ -338,8 +327,6 @@ class EntropyFPLoader(FPLoader):
                     mfp[col] = 1.0
         return torch.from_numpy(mfp)
 
-    # --- sparse indices helpers ---
-
     def build_fp_indices_for_smiles(self, smiles: str, ignore_atoms=None) -> Optional[List[int]]:
         if self.out_dim is None or self.max_radius is None:
             raise RuntimeError("Call setup() first.")
@@ -368,8 +355,6 @@ class EntropyFPLoader(FPLoader):
             indices = self.build_fp_indices_for_smiles(smi, ignore_atoms=ignore_atoms)
             out[smi] = indices
         return out
-
-    # ---------- retrieval rankingset ----------
 
     def build_rankingset(self, fp_type: str = "RankingEntropy", save: bool = True, num_procs: int = 0) -> torch.Tensor:
         if self.max_radius is None or not self.bitinfo_to_fp_index_map:
@@ -403,9 +388,6 @@ def make_fp_loader(fp_type: str, entropy_out_dim=16384, max_radius=6, retrieval_
         return fp_loader
     raise NotImplementedError(f"FP type {fp_type} not implemented")
 
-# ---------------------------
-# CLI
-# ---------------------------
 def _cli():
     parser = argparse.ArgumentParser(description="Fingerprint loader utilities (entropy selection + rankingset builder).")
     sub = parser.add_subparsers(dest="cmd", required=True)

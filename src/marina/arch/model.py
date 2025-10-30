@@ -7,17 +7,14 @@ import torch.distributed as dist
 from collections import defaultdict
 import numpy as np
 
+from ..core.const import NON_SPECTRAL_INPUTS
 from ..core.settings import MARINAArgs
-from ..core.utils import L1
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
-from ..core.lr_scheduler import NoamOpt
 from ..data.fp_loader import FPLoader
 from ..data.encoder import build_encoder
-from ..data.modality_dropout_scheduler import ModalityDropoutScheduler
 from .attention import MultiHeadAttentionCore
 from .loss import BCECosineHybridLoss
-
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -65,32 +62,23 @@ class SPECTRE(pl.LightningModule):
         
         self.args = args
         self.fp_loader = fp_loader
-        
         if self.global_rank == 0:
             logger.info("[SPECTRE] Started Initializing")
-
         self.fp_length = args.out_dim
         self.out_dim = args.out_dim
-        
         self.batch_size = args.batch_size
         self.lr = args.lr
-        self.noam_factor = args.noam_factor
         self.weight_decay = args.weight_decay
         self.heads = args.heads
         self.layers = args.layers
         self.ff_dim = args.ff_dim
         self.dropout = args.dropout
-        self.l1_decay = args.l1_decay
-
+        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
         self.scheduler = args.scheduler
-        self.warm_up_steps = args.warm_up_steps
         self.dim_model = args.dim_model
-        
         self.use_jaccard = args.use_jaccard
-        
         self.freeze_weights = args.freeze_weights
 
-        # ranked encoder
         self.enc_nmr = build_encoder(
             args.dim_model,
             args.nmr_dim_coords,
@@ -103,8 +91,6 @@ class SPECTRE(pl.LightningModule):
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
             args.use_peak_values
         )
-
-        # 1) coordinate encoders
         self.encoders = {
             "hsqc": self.enc_nmr,
             "h_nmr": self.enc_nmr,
@@ -112,7 +98,6 @@ class SPECTRE(pl.LightningModule):
             "mass_spec": self.enc_ms
         }
         self.encoders = nn.ModuleDict({k: v for k, v in self.encoders.items() if k in self.args.input_types})
-        
         self.self_attn = nn.ModuleDict({
             modality: nn.TransformerEncoder(
                 nn.TransformerEncoderLayer(
@@ -124,7 +109,6 @@ class SPECTRE(pl.LightningModule):
             )
             for modality in self.encoders
         })
-        
         self.cross_blocks = nn.ModuleList([
             CrossAttentionBlock(
                 dim_model=self.dim_model,
@@ -134,74 +118,46 @@ class SPECTRE(pl.LightningModule):
             )
             for _ in range(self.layers)
         ])
-        
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
-
         self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
-
         self.validation_step_outputs = defaultdict(list)
         self.test_step_outputs = defaultdict(list)
-        
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
-        
-        if self.l1_decay > 0:
-            self.cross_attn = L1(self.cross_attn, self.l1_decay)
-            self.self_attn  = L1(self.self_attn,  self.l1_decay)
-            self.fc         = L1(self.fc,         self.l1_decay)
-        
         self.ranker = None
-        
-        if self.global_rank == 0:
-            logger.info("[SPECTRE] Initialized")
-        
-        spectra_types = set(self.args.input_types) - {'mw'}
+        spectra_types = set(self.args.input_types) - NON_SPECTRAL_INPUTS
         if self.args.hybrid_early_stopping:
             self.loss_weights = np.array([0.5] + [0.5/len(spectra_types)] * len(spectra_types))
         else:
             self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
+        if self.global_rank == 0:
+            logger.info("[SPECTRE] Initialized")
         
     def forward(self, batch, batch_idx=None, return_representations=False):
         B = next(iter(batch.values())).size(0)
         all_points = []
         all_masks = []
-
         for m, x in batch.items():
-            if m in ("mw", "elem_idx", "elem_cnt"):
+            if m in NON_SPECTRAL_INPUTS:
                 continue
-
-            # x: (B, L, D_in)
             B, L, D_in = x.shape
-            if L == 0:
-                continue
-            mask = (x.abs().sum(-1) == 0)  # (B, L), True for padding
-
-            # 1. Encode and reshape
+            mask = (x.abs().sum(-1) == 0)
             x_flat   = x.view(B * L, D_in)
             enc_flat = self.encoders[m](x_flat)
-            enc_seq  = enc_flat.view(B, L, self.dim_model)  # (B, L, D)
-
-            # 2. Self-attention per modality
+            enc_seq  = enc_flat.view(B, L, self.dim_model)
             attended = self.self_attn[m](enc_seq, src_key_padding_mask=mask)
-
-            # 3. Accumulate
             all_points.append(attended)
             all_masks.append(mask)
-
-        # 4. Add molecular weight as a 1-point modality
         if "mw" in batch:
-            mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)  # (B, 1, D)
+            mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)
             all_points.append(mw_feat)
             all_masks.append(torch.zeros(B, 1, dtype=torch.bool, device=mw_feat.device))
-
-        joint_seq = torch.cat(all_points, dim=1)  # (B, N_total+1, D)
-        joint_mask = torch.cat(all_masks, dim=1)  # (B, N_total+1)
-
-        # 6. Cross-attend from global CLS token
-        global_token = self.global_cls.expand(B, 1, -1)  # (B, 1, D)
+        joint_seq = torch.cat(all_points, dim=1)
+        joint_mask = torch.cat(all_masks, dim=1)
+        global_token = self.global_cls.expand(B, 1, -1)
         for block in self.cross_blocks:
             global_token = block(
                 query=global_token,
@@ -209,10 +165,7 @@ class SPECTRE(pl.LightningModule):
                 value=joint_seq,
                 key_padding_mask=joint_mask
             )
-
-        # 7. Final projection
-        out = self.fc(global_token.squeeze(1))  # (B, out_dim)
-
+        out = self.fc(global_token.squeeze(1))
         if return_representations:
             return global_token.squeeze(1).detach().cpu().numpy()
         return out
@@ -234,12 +187,7 @@ class SPECTRE(pl.LightningModule):
         )
         input_type_key = "all_inputs"
         if dataloader_idx is not None and dataloader_idx > 0:
-            spectral_types = list(set(self.args.input_types) - {'mw'})
-            if dataloader_idx - 1 < len(spectral_types):
-                input_type_key = spectral_types[dataloader_idx - 1]
-            else:
-                input_type_key = f"unknown_{dataloader_idx}"
-        
+            input_type_key = self.spectral_types[dataloader_idx - 1]
         self.validation_step_outputs[input_type_key].append(metrics)
         return metrics
     
@@ -251,19 +199,11 @@ class SPECTRE(pl.LightningModule):
             logits, fps, self.ranker, loss, self.loss,
             thresh=0.0, no_ranking=False
         )
-        
-        # Determine input type based on dataloader_idx
         input_type_key = "all_inputs"
         if dataloader_idx is not None and dataloader_idx > 0:
-            spectral_types = list(set(self.args.input_types) - {'mw'})
-            if dataloader_idx - 1 < len(spectral_types):
-                input_type_key = spectral_types[dataloader_idx - 1]
-            else:
-                input_type_key = f"unknown_{dataloader_idx}"
-        
+            input_type_key = self.spectral_types[dataloader_idx - 1]
         self.test_step_outputs[input_type_key].append(metrics)
         return metrics
-
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         raise NotImplementedError()
@@ -294,43 +234,9 @@ class SPECTRE(pl.LightningModule):
             self.log(k, v, on_epoch=True, sync_dist=True)
         self.test_step_outputs.clear()
 
-    def on_train_epoch_start(self):
-        """Set the modality-dropout curriculum phase once per epoch (cached)."""
-        if self.args.modality_dropout_scheduler is None:
-            return
-        try:
-            max_epochs = max(1, getattr(self.trainer, "max_epochs", 1))
-            phase = 2.0 * (self.current_epoch / (max_epochs - 1)) if max_epochs > 1 else 2.0
-            dm = self.trainer.datamodule
-            assert hasattr(dm, "train") and hasattr(dm.train, "set_phase")
-            dm.train.set_phase(phase)
-        except Exception as e:
-            logger.warning(f"[SPECTRE] Could not set modality dropout phase: {e}")
-    
-    def on_train_epoch_end(self):
-        # Emit distributions to the logger (W&B will pick these up)
-        self._log_modality_distribution_lightning()
-
     def configure_optimizers(self):
         if not self.scheduler:
             return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay = self.weight_decay)
-        elif self.scheduler == "attention":
-            optim = torch.optim.AdamW(
-                self.parameters(),
-                lr=self.lr,
-                weight_decay = self.weight_decay, 
-                betas=(0.9, 0.98),
-                eps=1e-9
-            )
-            scheduler = NoamOpt(self.dim_model, self.warm_up_steps, optim, self.noam_factor)
-            return {
-                "optimizer": optim,
-                "lr_scheduler": {
-                    "scheduler": scheduler,
-                    "interval": "step",
-                    "frequency": 1,
-                }
-            }
         elif self.scheduler == "cosine":
             opt = torch.optim.AdamW(self.parameters(), lr=self.lr,
                                 weight_decay=self.weight_decay, betas=(0.9, 0.95))
@@ -367,26 +273,3 @@ class SPECTRE(pl.LightningModule):
         store = self.fp_loader.load_rankingset(self.args.fp_type)
         self.ranker = RankingSet(store=store, metric="cosine")
 
-    def _log_modality_distribution_lightning(self):
-        """
-        Logs per-combo expected target marginal *as individual scalars* (Lightning-native).
-        These will show as separate series you can manually group in the W&B UI.
-        """
-        try:
-            dm = self.trainer.datamodule
-            sched: ModalityDropoutScheduler = getattr(getattr(dm, "train", None), "drop_scheduler", None)
-            if sched is None:
-                return
-
-            tgt = sched.expected_target_marginal(phase=None, labeled=True)
-            for name, prob in tgt.items():
-                self.log(f"modality_dist/{name}", float(prob), on_epoch=True, prog_bar=False, sync_dist=True)
-
-            # (Optional) dataset availability context
-            avail = sched.observed_availability_marginal(labeled=True)
-            for name, prob in avail.items():
-                self.log(f"modality_avail/{name}", float(prob), on_epoch=True, prog_bar=False, sync_dist=True)
-        except Exception as e:
-            logger.warning(f"[SPECTRE] Could not log modality distributions: {e}")
-    
-    

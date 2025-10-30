@@ -42,17 +42,13 @@ def parse_args() -> MARINAArgs:
     parser.add_argument('--out_dim', type=int)
     parser.add_argument('--accumulate_grad_batches_num', type=int)
     add_bool_flag(parser, 'hybrid_early_stopping', False)
-    parser.add_argument('--modality_dropout_scheduler', choices=['constant', 'scheduled'], default=None)
     
     parser.add_argument('--dropout', type=float)
 
     parser.add_argument('--lr', type=float)
     parser.add_argument('--eta_min', type=float)
-    parser.add_argument('--noam_factor', type=float)
     parser.add_argument('--weight_decay', type=float)
-    parser.add_argument('--l1_decay', type=float)
-    parser.add_argument('--scheduler', choices=['attention'])
-    parser.add_argument('--warm_up_steps', type=int)
+    parser.add_argument('--scheduler', choices=['cosine'])
     
     # --- LoRA core ---
     add_bool_flag(parser, 'train_lora', False)

@@ -1,4 +1,4 @@
-from typing import Literal, Dict, List
+from typing import Literal, Dict, List, Set
 
 INPUT_TYPES = Literal['hsqc', 'h_nmr', 'c_nmr', 'mass_spec', 'mw']
 INPUTS_CANONICAL_ORDER: List[INPUT_TYPES] = ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
@@ -12,6 +12,8 @@ DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
     'mass_spec': 0.5,
     'mw': 0.5
 }
+
+NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = {'mw'}
 
 if 'nas-gpu' in __file__:
     print('Detected yuzu setup')
