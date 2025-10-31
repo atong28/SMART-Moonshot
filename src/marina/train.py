@@ -11,7 +11,7 @@ from .arch.model import SPECTRE
 from .test import test
 
 def train(args: MARINAArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, wandb_run = None):
-    torch.set_float32_matmul_precision('medium')
+    torch.set_float32_matmul_precision('high')
     if args.debug:
         args.epochs = 5
     logger = logging.getLogger('lightning')

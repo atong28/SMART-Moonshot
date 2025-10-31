@@ -16,7 +16,7 @@ from src.molemcl.settings import MoleMCLArgs
 from src.molemcl.train import train as run_train
 from src.molemcl.test import test as run_test
 
-torch.set_float32_matmul_precision('medium')
+torch.set_float32_matmul_precision('high')
 
 def is_main_process():
     return int(os.environ.get("RANK", 0) or 0) == 0
