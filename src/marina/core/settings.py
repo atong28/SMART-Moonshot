@@ -54,6 +54,7 @@ class MARINAArgs:
     scheduler: Optional[Literal['cosine']] = 'cosine'
     freeze_weights: bool = False
     use_jaccard: bool = False
+    warmup: bool = True
 
     visualize: bool = False
 

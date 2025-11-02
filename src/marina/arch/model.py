@@ -174,7 +174,7 @@ class SPECTRE(pl.LightningModule):
         batch_inputs, fps = batch
         logits = self.forward(batch_inputs)
         loss = self.loss(logits, fps)
-        self.log("tr/loss", loss, prog_bar=True, sync_dist=True)
+        self.log("tr/loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
         return loss
 
     def validation_step(self, batch, batch_idx, dataloader_idx=None):
@@ -218,7 +218,7 @@ class SPECTRE(pl.LightningModule):
                 )
             di[f"val/mean_{feat}"] = np.average([di[f"val/mean_{feat}/{input_type}"] for input_type in self.validation_step_outputs.keys()], weights=self.loss_weights)
         for k, v in di.items():
-            self.log(k, v, on_epoch=True, sync_dist=True)
+            self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
         self.validation_step_outputs.clear()
         
     def on_test_epoch_end(self):
@@ -231,7 +231,7 @@ class SPECTRE(pl.LightningModule):
                 )
             di[f"test/mean_{feat}"] = np.average([di[f"test/mean_{feat}/{input_type}"] for input_type in self.test_step_outputs.keys()], weights=self.loss_weights)
         for k, v in di.items():
-            self.log(k, v, on_epoch=True, sync_dist=True)
+            self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
         self.test_step_outputs.clear()
 
     def configure_optimizers(self):
@@ -242,7 +242,7 @@ class SPECTRE(pl.LightningModule):
                                 weight_decay=self.weight_decay, betas=(0.9, 0.95))
             total_steps = self.trainer.estimated_stepping_batches
             steps_per_epoch = max(1, total_steps // self.trainer.max_epochs)
-            warmup_steps = int((self.args.epochs // 10) * steps_per_epoch)
+            warmup_steps = int((self.args.epochs // 10) * steps_per_epoch) if self.args.warmup else 0
 
             min_factor = self.args.eta_min / self.args.lr  # final LR as a fraction of base LR
 

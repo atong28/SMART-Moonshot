@@ -49,6 +49,7 @@ def parse_args() -> MARINAArgs:
     parser.add_argument('--eta_min', type=float)
     parser.add_argument('--weight_decay', type=float)
     parser.add_argument('--scheduler', choices=['cosine'])
+    add_bool_flag(parser, 'warmup', True)
     
     # --- LoRA core ---
     add_bool_flag(parser, 'train_lora', False)
