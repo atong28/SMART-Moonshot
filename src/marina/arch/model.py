@@ -4,7 +4,7 @@ import math
 import torch
 import torch.nn as nn
 import torch.distributed as dist
-from collections import defaultdict
+from torchmetrics import MeanMetric
 import numpy as np
 
 from ..core.const import NON_SPECTRAL_INPUTS
@@ -122,8 +122,8 @@ class SPECTRE(pl.LightningModule):
         self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
         self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
-        self.validation_step_outputs = defaultdict(list)
-        self.test_step_outputs = defaultdict(list)
+        self._val_mm = torch.nn.ModuleDict()
+        self._test_mm = torch.nn.ModuleDict()
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
@@ -135,6 +135,12 @@ class SPECTRE(pl.LightningModule):
             self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
+        
+    def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str) -> MeanMetric:
+        key = f"{feat}__{input_type}"
+        if key not in store:
+            store[key] = MeanMetric(sync_on_compute=True).to(self.device)
+        return store[key]
         
     def forward(self, batch, batch_idx=None, return_representations=False):
         B = next(iter(batch.values())).size(0)
@@ -185,11 +191,11 @@ class SPECTRE(pl.LightningModule):
             logits, fps, self.ranker, loss, self.loss,
             thresh=0.0, no_ranking=True
         )
-        input_type_key = "all_inputs"
-        if dataloader_idx is not None and dataloader_idx > 0:
-            input_type_key = self.spectral_types[dataloader_idx - 1]
-        self.validation_step_outputs[input_type_key].append(metrics)
-        return metrics
+        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
+            else self.spectral_types[dataloader_idx - 1]
+        for feat, val in metrics.items():
+            mm = self._get_metric_mm(self._val_mm, feat, input_type_key)
+            mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
     
     def test_step(self, batch, batch_idx, dataloader_idx=None):
         batch_inputs, fps = batch
@@ -199,40 +205,63 @@ class SPECTRE(pl.LightningModule):
             logits, fps, self.ranker, loss, self.loss,
             thresh=0.0, no_ranking=False
         )
-        input_type_key = "all_inputs"
-        if dataloader_idx is not None and dataloader_idx > 0:
-            input_type_key = self.spectral_types[dataloader_idx - 1]
-        self.test_step_outputs[input_type_key].append(metrics)
-        return metrics
+        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
+                        else self.spectral_types[dataloader_idx - 1]
+        for feat, val in metrics.items():
+            mm = self._get_metric_mm(self._test_mm, feat, input_type_key)
+            mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         raise NotImplementedError()
 
     def on_validation_epoch_end(self):
-        feats = self.validation_step_outputs["all_inputs"][0].keys()
+        keys = list(self._val_mm.keys())
+        if not keys:
+            return
+
+        input_types = sorted({k.split("__", 1)[1] for k in keys})
+        feats = sorted({k.split("__", 1)[0] for k in keys})
+
         di = {}
         for feat in feats:
-            for input_type in self.validation_step_outputs.keys():
-                di[f"val/mean_{feat}/{input_type}"] = np.mean(
-                    [v[feat] for v in self.validation_step_outputs[input_type]]
-                )
-            di[f"val/mean_{feat}"] = np.average([di[f"val/mean_{feat}/{input_type}"] for input_type in self.validation_step_outputs.keys()], weights=self.loss_weights)
+            vals_for_avg = []
+            for input_type in input_types:
+                mm = self._val_mm[f"{feat}__{input_type}"]
+                val = mm.compute()
+                v = val.item()
+                di[f"val/mean_{feat}/{input_type}"] = v
+                vals_for_avg.append(v)
+            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
+
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
-        self.validation_step_outputs.clear()
-        
+
+        for mm in self._val_mm.values():
+            mm.reset()
+
     def on_test_epoch_end(self):
-        feats = self.test_step_outputs["all_inputs"][0].keys()
+        keys = list(self._test_mm.keys())
+        if not keys:
+            return
+        input_types = sorted({k.split("__", 1)[1] for k in keys})
+        feats = sorted({k.split("__", 1)[0] for k in keys})
+
         di = {}
         for feat in feats:
-            for input_type in self.test_step_outputs.keys():
-                di[f"test/mean_{feat}/{input_type}"] = np.mean(
-                    [v[feat] for v in self.test_step_outputs[input_type]]
-                )
-            di[f"test/mean_{feat}"] = np.average([di[f"test/mean_{feat}/{input_type}"] for input_type in self.test_step_outputs.keys()], weights=self.loss_weights)
+            vals_for_avg = []
+            for input_type in input_types:
+                mm = self._test_mm[f"{feat}__{input_type}"]
+                val = mm.compute()
+                v = val.item()
+                di[f"test/mean_{feat}/{input_type}"] = v
+                vals_for_avg.append(v)
+            di[f"test/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
+
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
-        self.test_step_outputs.clear()
+
+        for mm in self._test_mm.values():
+            mm.reset()
 
     def configure_optimizers(self):
         if not self.scheduler:
