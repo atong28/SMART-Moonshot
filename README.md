@@ -2,14 +2,17 @@
 
 ## Installation
 
+Install pixi according to the following instructions:
 ```
-conda env create -n moonshot python=3.12
-conda activate moonshot
-pip install torch==2.5.1+cu124 \
-            torchvision==0.20.1+cu124 \
-            torchaudio==2.5.1 \
-            --index-url https://download.pytorch.org/whl/cu124
-conda env update -n moonshot -f environment.yml --prune
+https://pixi.sh/dev/installation/
+```
+If you are not running on linux-64, you can try adding your distro into `pixi.toml` and install anyways, but no guarantees for support. Running the following command should automatically boot you into the shell with the loaded environment:
+```
+pixi shell
+```
+To just install the environment, use
+```
+pixi install
 ```
 
 ## Dataset setup

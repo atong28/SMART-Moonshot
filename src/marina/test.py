@@ -42,6 +42,7 @@ def test(args: MARINAArgs, data_module: SPECTREDataModule, model: SPECTRE, resul
         callbacks=[early_stopping, lr_monitor, ckpt_callback]
     )
     test_result = trainer.test(model, data_module, ckpt_path=ckpt_path)
+    
     with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
         pickle.dump(test_result, f)
         

@@ -1,0 +1,80 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: atong-marina-run-no-warmup-fixed-logs-num-2 
+  labels:
+    owner: atong
+spec:
+  template:
+    spec:
+
+      affinity:         
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: nvidia.com/gpu.product
+                    operator: In
+                    values:
+                    - NVIDIA-TITAN-RTX
+                    - NVIDIA-A40
+                    - NVIDIA-GeForce-RTX-3090
+                    - NVIDIA-RTX-A6000
+                    - NVIDIA-RTX-A5000
+                    - NVIDIA-A10
+                    - NVIDIA-GeForce-RTX-4090
+                  - key: kubernetes.io/hostname
+                    operator: NotIn
+                    values:
+                    - hcc-nrp-shor-c5805.unl.edu
+      containers:
+        - name: demo
+          image: gitlab-registry.nrp-nautilus.io/a8tong/smart-moonshot/pixi-cuda:12.8.1
+          command: ["/bin/bash"]
+          args:
+            - "-c"
+            - >-
+              set -euxo pipefail &&
+              nvidia-smi -L &&
+              bash /root/gurusmart/startup.sh MoonshotDatasetv3.zip &&
+              cd /code &&
+              pixi run --manifest-path pixi.toml -- torchrun --nproc_per_node=4 stage1.py --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-run-no-warmup-fixed-logs-num-2 --no_warmup 
+              
+          volumeMounts:
+            - mountPath: "/root/gurusmart"
+              name: atong-spectre
+            - mountPath: /dev/shm
+              name: dshm
+            - mountPath: /workspace
+              name: data-unzip
+            - mountPath: /code
+              name: code-workdir
+          resources:
+            limits:
+              memory: 160Gi
+              cpu: "18"
+              ephemeral-storage: 600Gi
+              nvidia.com/gpu: "4"
+            requests:
+              memory: 160Gi
+              cpu: "18"
+              ephemeral-storage: 600Gi
+              nvidia.com/gpu: "4"
+
+      volumes:
+        - name: atong-spectre
+          persistentVolumeClaim:
+            claimName: atong-spectre
+        - name: dshm
+          emptyDir:
+            medium: Memory
+        - name: data-unzip
+          emptyDir: {}
+        - name: code-workdir
+          emptyDir: {}
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 0
+        runAsGroup: 0
+        fsGroup: 0
+  backoffLimit: 1

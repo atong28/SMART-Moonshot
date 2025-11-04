@@ -109,6 +109,8 @@ def parse_args() -> MARINAArgs:
             if k in DO_NOT_OVERRIDE:
                 continue
             setattr(args, k, v)
+    if args.debug and args.epochs is None:
+        args.epochs = 1
     args_dict = {k: v for k, v in vars(args).items() if v is not None}
 
     return MARINAArgs(**args_dict)

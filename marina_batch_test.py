@@ -9,7 +9,6 @@ from datetime import datetime
 
 import pytorch_lightning as pl
 import numpy as np
-import random
 import torch
 
 from src.marina.core.args import parse_args
@@ -61,7 +60,6 @@ def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
-    random.seed(seed)
 
 def parse_combo_string(s):
     """

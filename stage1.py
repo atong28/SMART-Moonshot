@@ -40,10 +40,9 @@ import shutil
 from datetime import datetime
 import wandb
 import pytorch_lightning as pl
-
 import numpy as np
-import random
 import torch
+
 from src.marina.core.args import parse_args
 from src.marina.core.settings import MARINAArgs
 from src.marina.data.fp_loader import make_fp_loader
@@ -58,7 +57,6 @@ def seed_everything(seed):
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
-    random.seed(seed)
 
 def main():
     args: MARINAArgs = parse_args()

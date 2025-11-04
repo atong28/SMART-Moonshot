@@ -136,10 +136,10 @@ class SPECTRE(pl.LightningModule):
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
         
-    def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str) -> MeanMetric:
+    def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str, sync_on_compute: bool = True) -> MeanMetric:
         key = f"{feat}__{input_type}"
         if key not in store:
-            store[key] = MeanMetric(sync_on_compute=True).to(self.device)
+            store[key] = MeanMetric(sync_on_compute=sync_on_compute).to(self.device)
         return store[key]
         
     def forward(self, batch, batch_idx=None, return_representations=False):
@@ -189,7 +189,7 @@ class SPECTRE(pl.LightningModule):
         loss = self.loss(logits, fps)
         metrics, _ = cm(
             logits, fps, self.ranker, loss, self.loss,
-            thresh=0.0, no_ranking=True
+            no_ranking=True
         )
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
             else self.spectral_types[dataloader_idx - 1]
@@ -203,12 +203,12 @@ class SPECTRE(pl.LightningModule):
         loss = self.loss(logits, fps)
         metrics, _ = cm(
             logits, fps, self.ranker, loss, self.loss,
-            thresh=0.0, no_ranking=False
+            no_ranking=False
         )
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
                         else self.spectral_types[dataloader_idx - 1]
         for feat, val in metrics.items():
-            mm = self._get_metric_mm(self._test_mm, feat, input_type_key)
+            mm = self._get_metric_mm(self._test_mm, feat, input_type_key, sync_on_compute=False)
             mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
 
     def predict_step(self, batch, batch_idx, return_representations=False):
@@ -226,9 +226,8 @@ class SPECTRE(pl.LightningModule):
         for feat in feats:
             vals_for_avg = []
             for input_type in input_types:
-                mm = self._val_mm[f"{feat}__{input_type}"]
-                val = mm.compute()
-                v = val.item()
+                mm = self._get_metric_mm(self._val_mm, feat, input_type, sync_on_compute=True)
+                v = mm.compute().item()
                 di[f"val/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
             di[f"val/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
@@ -240,6 +239,7 @@ class SPECTRE(pl.LightningModule):
             mm.reset()
 
     def on_test_epoch_end(self):
+        print("Starting test epoch end")
         keys = list(self._test_mm.keys())
         if not keys:
             return
@@ -250,18 +250,18 @@ class SPECTRE(pl.LightningModule):
         for feat in feats:
             vals_for_avg = []
             for input_type in input_types:
-                mm = self._test_mm[f"{feat}__{input_type}"]
-                val = mm.compute()
-                v = val.item()
+                mm = self._get_metric_mm(self._test_mm, feat, input_type, sync_on_compute=False)
+                v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
             di[f"test/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
-
+        print("Done computing test metrics")
         for k, v in di.items():
-            self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
-
+            self.log(k, v, on_epoch=True, on_step=False)
+        print("Done logging test metrics")
         for mm in self._test_mm.values():
             mm.reset()
+        print("Done resetting test metrics")
 
     def configure_optimizers(self):
         if not self.scheduler:
@@ -292,11 +292,6 @@ class SPECTRE(pl.LightningModule):
                     "name": "lr",
                 },
             }
-
-    def log(self, name, value, *args, **kwargs):
-        if kwargs.get('sync_dist') is None:
-            kwargs['sync_dist'] = logger_should_sync_dist
-        super().log(name, value, *args, **kwargs)
 
     def setup_ranker(self):
         store = self.fp_loader.load_rankingset(self.args.fp_type)

@@ -4,7 +4,6 @@ import torch
 import traceback
 import sys
 import logging
-import random
 from itertools import islice
 from typing import Any, Optional
 
@@ -91,14 +90,15 @@ class SPECTREDataset(Dataset):
         drop_candidates = [k for k, v in available_types.items() if k in self.input_types and v]
         assert len(drop_candidates) > 0, 'Found an empty entry!'
         
-        always_keep = random.choice(drop_candidates)
+        idx = torch.randint(len(drop_candidates), (1,)).item()
+        always_keep = drop_candidates[idx]
         input_types = set(self.input_types)
         for input_type in self.input_types:
             if not data_obj[f'has_{input_type}']:
                 input_types.remove(input_type)
             elif (input_type != always_keep and 
                 input_type not in self.requires and 
-                random.random() < DROP_PERCENTAGE[input_type]):
+                torch.rand(1).item() < DROP_PERCENTAGE[input_type]):
                 input_types.remove(input_type)
         return self.spectral_loader.load(data_idx, input_types, jittering = self.jittering), self.mfp_loader.load(data_idx)
 
