@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: atong-marina-run-no-warmup-fixed-logs-num-2 
+  name: atong-marina-run-no-warmup-training-5 
   labels:
     owner: atong
 spec:
@@ -38,7 +38,7 @@ spec:
               nvidia-smi -L &&
               bash /root/gurusmart/startup.sh MoonshotDatasetv3.zip &&
               cd /code &&
-              pixi run --manifest-path pixi.toml -- torchrun --nproc_per_node=4 stage1.py --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-run-no-warmup-fixed-logs-num-2 --no_warmup 
+              pixi run --manifest-path pixi.toml -- torchrun --nproc_per_node=4 stage1.py --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-run-no-warmup-training-5 --no_warmup 
               
           volumeMounts:
             - mountPath: "/root/gurusmart"
