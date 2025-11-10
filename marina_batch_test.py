@@ -14,26 +14,15 @@ import torch
 from src.marina.core.args import parse_args
 from src.marina.core.settings import MARINAArgs
 from src.marina.data.fp_loader import EntropyFPLoader
-from src.marina.arch.model import SPECTRE
+from src.marina.arch.model import MARINA
 from src.marina.test import test
 from src.marina.core.const import DATASET_ROOT, CODE_ROOT
-from src.marina.data.dataset import SPECTREDataModule
+from src.marina.data.dataset import MARINADataModule
 
 # ----------------------------
 # Combos (as you specified)
 # ----------------------------
 COMBO_STRS = [
-    #"{hsqc,mw}",
-    #"{h_nmr,mw}",
-    #"{c_nmr,mw}",
-    #"{mass_spec,mw}",
-    #"{hsqc,c_nmr,mw}",
-    #"{hsqc,h_nmr,mw}",
-    #"{hsqc,mass_spec,mw}",
-    #"{c_nmr,h_nmr,mw}",
-    #"{c_nmr,mass_spec,mw}",
-    #"{h_nmr,mass_spec,mw}",
-    #"{hsqc,c_nmr,h_nmr,mw}",
     "{hsqc,c_nmr,h_nmr,mass_spec,mw}"
 ]
 
@@ -105,8 +94,8 @@ def main():
 
     # Prepare FP loader once (reused)
     fp_loader = EntropyFPLoader()
-    fp_loader.setup(args.out_dim, 6)
-    model = SPECTRE(args, fp_loader)
+    fp_loader.setup(args.out_dim, 6, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'))
+    model = MARINA(args, fp_loader)
 
     jsonl_path = os.path.join(results_path, "sweep_results.jsonl")
     csv_path   = os.path.join(results_path, "sweep_metrics.csv")
@@ -131,7 +120,7 @@ def main():
         local_args.requires    = list(combo)
 
         # Rebuild DataModule/Model so modality wiring is correct
-        data_module = SPECTREDataModule(local_args, fp_loader)
+        data_module = MARINADataModule(local_args, fp_loader)
         
         if is_main_process():
             logger.info("[Sweep] Testing combo: %s", ",".join(combo))

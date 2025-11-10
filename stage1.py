@@ -46,11 +46,11 @@ import torch
 from src.marina.core.args import parse_args
 from src.marina.core.settings import MARINAArgs
 from src.marina.data.fp_loader import make_fp_loader
-from src.marina.arch.model import SPECTRE
+from src.marina.arch.model import MARINA
 from src.marina.train import train
 from src.marina.test import test
 from src.marina.core.const import DATASET_ROOT, WANDB_API_KEY_FILE, PVC_ROOT
-from src.marina.data.dataset import SPECTREDataModule
+from src.marina.data.dataset import MARINADataModule
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -93,8 +93,8 @@ def main():
         wandb_run = None
 
     fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'))
-    model = SPECTRE(args, fp_loader)
-    data_module = SPECTREDataModule(args, fp_loader)
+    model = MARINA(args, fp_loader)
+    data_module = MARINADataModule(args, fp_loader)
 
     if args.train:
         train(args, data_module, model, results_path, wandb_run=wandb_run)

@@ -15,12 +15,12 @@ OVERRIDE = True
 
 def canonicalize_smiles(smiles: str, keep_stereo: bool = True):
     if smiles is None or smiles == '':
-        return None
+        raise ValueError(f"Invalid empty SMILES")
     if '.' in smiles:
         smiles = max(smiles.split('.'), key=len)
     mol = Chem.MolFromSmiles(smiles)
     if mol is None:
-        return None
+        raise ValueError(f"Invalid SMILES: {smiles}")
     return Chem.MolToSmiles(mol, isomericSmiles=keep_stereo, canonical=True)
 
 os.makedirs(SAVE_PATH, exist_ok=True)

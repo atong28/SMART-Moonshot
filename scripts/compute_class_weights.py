@@ -32,13 +32,13 @@ import torch
 from src.marina.core.args import parse_args
 from src.marina.core.settings import MARINAArgs
 from src.marina.data.fp_loader import EntropyFPLoader
-from src.marina.arch.model import SPECTRE
+from src.marina.arch.model import MARINA
 from src.marina.train import train
 from src.marina.test import test
 from src.marina.core.const import DATASET_ROOT, CODE_ROOT
-from src.marina.lora.spectre_lora import SPECTRELoRA
+from src.marina.lora.spectre_lora import MARINALoRA
 from src.marina.lora.load_utils import load_base_ckpt_into_lora_model
-from src.marina.data.dataset import SPECTREDataModule
+from src.marina.data.dataset import MARINADataModule
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -61,7 +61,7 @@ logger = None
 
 fp_loader = EntropyFPLoader()
 fp_loader.setup(args.out_dim, 6)
-data_module = SPECTREDataModule(args, fp_loader)
+data_module = MARINADataModule(args, fp_loader)
 data_module.setup('fit')
 train_dl = data_module.train_dataloader()
 

@@ -13,11 +13,11 @@ import pytorch_lightning.callbacks as cb
 import pytorch_lightning as pl
 
 from .core.settings import MARINAArgs
-from .arch.model import SPECTRE
-from .data.dataset import SPECTREDataModule
+from .arch.model import MARINA
+from .data.dataset import MARINADataModule
 
 
-def test(args: MARINAArgs, data_module: SPECTREDataModule, model: SPECTRE, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
+def test(args: MARINAArgs, data_module: MARINADataModule, model: MARINA, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
     if not os.path.exists(results_path):
         os.makedirs(results_path, exist_ok=True)
     model.setup_ranker()

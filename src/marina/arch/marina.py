@@ -56,14 +56,14 @@ class CrossAttentionBlock(nn.Module):
         out = self.norm2(q1 + ff_out)
         return out
 
-class SPECTRE(pl.LightningModule):
+class MARINA(pl.LightningModule):
     def __init__(self, args: MARINAArgs, fp_loader: FPLoader):
         super().__init__()
         
         self.args = args
         self.fp_loader = fp_loader
         if self.global_rank == 0:
-            logger.info("[SPECTRE] Started Initializing")
+            logger.info("[MARINA] Started Initializing")
         self.fp_length = args.out_dim
         self.out_dim = args.out_dim
         self.batch_size = args.batch_size
@@ -134,7 +134,7 @@ class SPECTRE(pl.LightningModule):
         else:
             self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
         if self.global_rank == 0:
-            logger.info("[SPECTRE] Initialized")
+            logger.info("[MARINA] Initialized")
         
     def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str, sync_on_compute: bool = True) -> MeanMetric:
         key = f"{feat}__{input_type}"
