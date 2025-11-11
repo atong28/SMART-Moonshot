@@ -14,10 +14,10 @@ import torch
 from src.marina.core.args import parse_args
 from src.marina.core.settings import MARINAArgs
 from src.marina.data.fp_loader import EntropyFPLoader
-from src.marina.arch.model import MARINA
+from src.marina.arch.marina import MARINA
 from src.marina.test import test
 from src.marina.core.const import DATASET_ROOT, CODE_ROOT
-from src.marina.data.dataset import MARINADataModule
+from src.marina.data.marina import MARINADataModule
 
 # ----------------------------
 # Combos (as you specified)
