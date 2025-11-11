@@ -1,19 +1,19 @@
 import logging
-import pytorch_lightning as pl
+from typing import Optional, Tuple
 import math
+import pytorch_lightning as pl
 import torch
 import torch.nn as nn
 import torch.distributed as dist
 from torchmetrics import MeanMetric
 import numpy as np
 
-from ..core.const import NON_SPECTRAL_INPUTS
-from ..core.settings import MARINAArgs
+from ..core.settings import SPECTREArgs
+from ..data.fp_loader import EntropyFPLoader
+from ..data.encoder import build_encoder
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
-from ..data.fp_loader import FPLoader
-from ..data.encoder import build_encoder
-from .attention import MultiHeadAttentionCore
+from ..core.const import NON_SPECTRAL_INPUTS
 from .loss import BCECosineHybridLoss
 
 logger = logging.getLogger("lightning")
@@ -21,51 +21,20 @@ if dist.is_initialized():
     rank = dist.get_rank()
     if rank != 0:
         logger.setLevel(logging.WARNING)
-logger_should_sync_dist = torch.cuda.device_count() > 1
 
-class CrossAttentionBlock(nn.Module):
-    """
-    Query (global CLS) attends to Key/Value (the spectral peaks + other tokens).
-    """
-    def __init__(self, dim_model, num_heads, ff_dim, dropout=0.1):
-        super().__init__()
-        self.attn = MultiHeadAttentionCore(
-            embed_dim=dim_model,
-            num_heads=num_heads,
-            dropout=dropout,
-            bias=True,
-        )
-        self.norm1 = nn.LayerNorm(dim_model)
-        self.ff = nn.Sequential(
-            nn.Linear(dim_model, ff_dim),
-            nn.ReLU(inplace=True),
-            nn.Dropout(dropout),
-            nn.Linear(ff_dim, dim_model),
-        )
-        self.norm2 = nn.LayerNorm(dim_model)
-
-    def forward(self, query, key, value, key_padding_mask=None):
-        attn_out = self.attn(
-            query=query,
-            key=key,
-            value=value,
-            key_padding_mask=key_padding_mask,
-        )
-        q1 = self.norm1(query + attn_out)
-        ff_out = self.ff(q1)
-        out = self.norm2(q1 + ff_out)
-        return out
-
-class MARINA(pl.LightningModule):
-    def __init__(self, args: MARINAArgs, fp_loader: FPLoader):
+class SPECTRE(pl.LightningModule):
+    def __init__(self, args: SPECTREArgs, fp_loader: EntropyFPLoader):
         super().__init__()
         
         self.args = args
         self.fp_loader = fp_loader
+        
         if self.global_rank == 0:
-            logger.info("[MARINA] Started Initializing")
+            logger.info("[SPECTRE] Started Initializing")
+
         self.fp_length = args.out_dim
         self.out_dim = args.out_dim
+        
         self.batch_size = args.batch_size
         self.lr = args.lr
         self.weight_decay = args.weight_decay
@@ -73,12 +42,16 @@ class MARINA(pl.LightningModule):
         self.layers = args.layers
         self.ff_dim = args.ff_dim
         self.dropout = args.dropout
-        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+
         self.scheduler = args.scheduler
         self.dim_model = args.dim_model
+        
         self.use_jaccard = args.use_jaccard
+        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+        
+        self.ranker = None
         self.freeze_weights = args.freeze_weights
-
+        
         self.enc_nmr = build_encoder(
             args.dim_model,
             args.nmr_dim_coords,
@@ -91,122 +64,132 @@ class MARINA(pl.LightningModule):
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
             args.use_peak_values
         )
-        self.encoders = {
-            "hsqc": self.enc_nmr,
-            "h_nmr": self.enc_nmr,
-            "c_nmr": self.enc_nmr,
-            "mass_spec": self.enc_ms
-        }
-        self.encoders = nn.ModuleDict({k: v for k, v in self.encoders.items() if k in self.args.input_types})
-        self.self_attn = nn.ModuleDict({
-            modality: nn.TransformerEncoder(
-                nn.TransformerEncoderLayer(
-                    d_model=self.dim_model, nhead=self.heads,
-                    dim_feedforward=self.ff_dim,
-                    batch_first=True, dropout=self.dropout
-                ), 
-                num_layers= args.self_attn_layers
-            )
-            for modality in self.encoders
-        })
-        self.cross_blocks = nn.ModuleList([
-            CrossAttentionBlock(
-                dim_model=self.dim_model,
-                num_heads=self.heads,
-                ff_dim=self.ff_dim,
-                dropout=self.dropout
-            )
-            for _ in range(self.layers)
-        ])
-        self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
-        self.mw_embed = nn.Linear(1, self.dim_model)
-        self.fc = nn.Linear(self.dim_model, self.out_dim)
+        self.enc_mw = build_encoder(
+            args.dim_model,
+            args.mw_dim_coords,
+            [args.mw_wavelength_bounds],
+            args.use_peak_values
+        )
+        self.encoder_list = [self.enc_nmr, self.enc_nmr, self.enc_nmr, self.enc_mw, self.enc_ms]
+        if self.global_rank == 0:
+            logger.info(f"[SPECTRE] Using {str(self.enc_nmr.__class__)}")
+
         self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
+
+        # additional nn modules 
         self._val_mm = torch.nn.ModuleDict()
         self._test_mm = torch.nn.ModuleDict()
+
+        self.embedding = nn.Embedding(6, self.dim_model)
+        self.fc = nn.Linear(self.dim_model, self.out_dim)
+        self.latent = torch.nn.Parameter(torch.randn(1, 1, self.dim_model))
+
+        layer = torch.nn.TransformerEncoderLayer(
+            d_model=self.dim_model,
+            nhead=self.heads,
+            dim_feedforward=self.ff_dim,
+            batch_first=True,
+            dropout=self.dropout,
+        )
+        self.transformer_encoder = torch.nn.TransformerEncoder(
+            layer,
+            num_layers=self.layers,
+        )
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
-        self.ranker = None
+        
         spectra_types = set(self.args.input_types) - NON_SPECTRAL_INPUTS
         if self.args.hybrid_early_stopping:
             self.loss_weights = np.array([0.5] + [0.5/len(spectra_types)] * len(spectra_types))
         else:
             self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
+
         if self.global_rank == 0:
-            logger.info("[MARINA] Initialized")
-        
+            logger.info("[SPECTRE] Initialized")
+
     def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str, sync_on_compute: bool = True) -> MeanMetric:
         key = f"{feat}__{input_type}"
         if key not in store:
             store[key] = MeanMetric(sync_on_compute=sync_on_compute).to(self.device)
         return store[key]
-        
-    def forward(self, batch, batch_idx=None, return_representations=False):
-        B = next(iter(batch.values())).size(0)
-        all_points = []
-        all_masks = []
-        for m, x in batch.items():
-            if m in NON_SPECTRAL_INPUTS:
-                continue
-            B, L, D_in = x.shape
-            mask = (x.abs().sum(-1) == 0)
-            x_flat   = x.view(B * L, D_in)
-            enc_flat = self.encoders[m](x_flat)
-            enc_seq  = enc_flat.view(B, L, self.dim_model)
-            attended = self.self_attn[m](enc_seq, src_key_padding_mask=mask)
-            all_points.append(attended)
-            all_masks.append(mask)
-        if "mw" in batch:
-            mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)
-            all_points.append(mw_feat)
-            all_masks.append(torch.zeros(B, 1, dtype=torch.bool, device=mw_feat.device))
-        joint_seq = torch.cat(all_points, dim=1)
-        joint_mask = torch.cat(all_masks, dim=1)
-        global_token = self.global_cls.expand(B, 1, -1)
-        for block in self.cross_blocks:
-            global_token = block(
-                query=global_token,
-                key=joint_seq,
-                value=joint_seq,
-                key_padding_mask=joint_mask
-            )
-        out = self.fc(global_token.squeeze(1))
+
+    def encode(
+        self,
+        x: torch.Tensor,
+        type_indicator: torch.Tensor,
+        mask: Optional[torch.Tensor] = None
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        x: Tensor of shape (B, N, D)
+        type_indicator: Tensor of shape (B, N) — per peak
+        Returns:
+            - out: (B, N+1, dim_model)
+            - mask: (B, N+1)
+        """
+        B, N, D = x.shape
+        device = x.device
+        dim_model = self.latent.shape[-1]
+
+        if mask is None:
+            zeros = ~x.sum(dim=2).bool()  # (B, N)
+            prefix_mask = torch.zeros((B, 1), dtype=torch.bool, device=device)
+            mask = torch.cat([prefix_mask, zeros], dim=1)  # (B, N+1)
+        x_flat = x.reshape(B * N, D)
+        type_flat = type_indicator.reshape(B * N)
+        points_flat = torch.zeros((B * N, dim_model), device=device)
+
+        for type_val, encoder in enumerate(self.encoder_list):
+            idx = type_flat == type_val  # (B*N,)
+            if idx.any():
+                points_flat[idx] = encoder(x_flat[idx])
+        points = points_flat.reshape(B, N, dim_model)
+        type_embed = self.embedding(type_indicator)  # (B, N, dim_model)
+        points += type_embed
+        latent = self.latent.expand(B, 1, -1)
+        points = torch.cat([latent, points], dim=1)
+        out = self.transformer_encoder(points, src_key_padding_mask=mask)
+        return out, mask
+    
+    def forward(
+        self,
+        inputs: torch.Tensor,
+        type_indicator: torch.Tensor,
+        return_representations: bool = False
+    ) -> torch.Tensor:
+        out, _ = self.encode(inputs, type_indicator)  # (b_s, seq_len, dim_model)
+        out_cls = self.fc(out[:, :1, :].squeeze(1))  # extracts cls token : (b_s, dim_model) -> (b_s, out_dim)
         if return_representations:
-            return global_token.squeeze(1).detach().cpu().numpy()
-        return out
+            return out.detach().cpu().numpy()
+        return out_cls
 
     def training_step(self, batch, batch_idx):
-        batch_inputs, fps = batch
-        logits = self.forward(batch_inputs)
-        loss = self.loss(logits, fps)
-        self.log("tr/loss", loss, prog_bar=True, on_epoch=True, on_step=False, sync_dist=True)
+        inputs, labels, type_indicator = batch
+        out = self.forward(inputs, type_indicator)
+        loss = self.loss(out, labels)
+        
+        self.log("tr/loss", loss, prog_bar=True, on_step=True, on_epoch=False, sync_dist=True)
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx=None):
-        batch_inputs, fps = batch
-        logits = self.forward(batch_inputs)
-        loss = self.loss(logits, fps)
-        metrics, _ = cm(
-            logits, fps, self.ranker, loss, self.loss,
-            no_ranking=True
-        )
+    def validation_step(self, batch, batch_idx, dataloader_idx = 0):
+        inputs, labels, type_indicator = batch
+        out = self.forward(inputs, type_indicator)
+        loss = self.loss(out, labels)
+        metrics, _ = cm(out, labels, self.ranker, loss, self.loss, no_ranking = True)
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
             else self.spectral_types[dataloader_idx - 1]
         for feat, val in metrics.items():
-            mm = self._get_metric_mm(self._val_mm, feat, input_type_key)
+            mm = self._get_metric_mm(self._val_mm, feat, input_type_key, sync_on_compute=True)
             mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
     
-    def test_step(self, batch, batch_idx, dataloader_idx=None):
-        batch_inputs, fps = batch
-        logits = self.forward(batch_inputs)
-        loss = self.loss(logits, fps)
-        metrics, _ = cm(
-            logits, fps, self.ranker, loss, self.loss,
-            no_ranking=False
-        )
+    def test_step(self, batch, batch_idx, dataloader_idx = 0):
+        inputs, labels, type_indicator = batch
+        out = self.forward(inputs, type_indicator)
+        loss = self.loss(out, labels)
+        
+        metrics, _ = cm(out, labels, self.ranker, loss, self.loss, no_ranking = False)
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
-                        else self.spectral_types[dataloader_idx - 1]
+            else self.spectral_types[dataloader_idx - 1]
         for feat, val in metrics.items():
             mm = self._get_metric_mm(self._test_mm, feat, input_type_key, sync_on_compute=False)
             mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
@@ -239,25 +222,31 @@ class MARINA(pl.LightningModule):
             mm.reset()
 
     def on_test_epoch_end(self):
+        print("1")
         keys = list(self._test_mm.keys())
         if not keys:
             return
         input_types = sorted({k.split("__", 1)[1] for k in keys})
         feats = sorted({k.split("__", 1)[0] for k in keys})
-
+        print("2")
         di = {}
         for feat in feats:
             vals_for_avg = []
             for input_type in input_types:
+                print("3")
                 mm = self._get_metric_mm(self._test_mm, feat, input_type, sync_on_compute=False)
+                print("4")
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
             di[f"test/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
+        print("5")
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)
+        print("6")
         for mm in self._test_mm.values():
             mm.reset()
+        print("7")
 
     def configure_optimizers(self):
         if not self.scheduler:
@@ -269,7 +258,7 @@ class MARINA(pl.LightningModule):
             steps_per_epoch = max(1, total_steps // self.trainer.max_epochs)
             warmup_steps = int((self.args.epochs // 10) * steps_per_epoch) if self.args.warmup else 0
 
-            min_factor = self.args.eta_min / self.args.lr  # final LR as a fraction of base LR
+            min_factor = self.args.eta_min / self.args.lr
 
             def lr_lambda(step: int):
                 if step < warmup_steps:
@@ -288,8 +277,9 @@ class MARINA(pl.LightningModule):
                     "name": "lr",
                 },
             }
-
+        else:
+            raise NotImplementedError(f"Scheduler {self.scheduler} not implemented for SPECTRE")
+        
     def setup_ranker(self):
         store = self.fp_loader.load_rankingset(self.args.fp_type)
         self.ranker = RankingSet(store=store, metric="cosine")
-

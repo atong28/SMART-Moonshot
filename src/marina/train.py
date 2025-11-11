@@ -5,12 +5,19 @@ import pytorch_lightning.callbacks as cb
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
-from .core.settings import MARINAArgs
-from .data.dataset import MARINADataModule
-from .arch.model import MARINA
+from .core.settings import MARINAArgs, SPECTREArgs
+from .data.marina import MARINADataModule
+from .arch.marina import MARINA
+from .arch.spectre import SPECTRE
 from .test import test
 
-def train(args: MARINAArgs, data_module: MARINADataModule, model: MARINA, results_path: str, wandb_run = None):
+def train(
+    args: MARINAArgs | SPECTREArgs,
+    data_module: MARINADataModule,
+    model: MARINA | SPECTRE,
+    results_path: str,
+    wandb_run = None
+) -> None:
     torch.set_float32_matmul_precision('high')
     logger = logging.getLogger('lightning')
     logger.info(f'[Main] Results Path: {results_path}')

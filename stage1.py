@@ -44,13 +44,15 @@ import numpy as np
 import torch
 
 from src.marina.core.args import parse_args
-from src.marina.core.settings import MARINAArgs
+from src.marina.core.settings import MARINAArgs, SPECTREArgs
 from src.marina.data.fp_loader import make_fp_loader
-from src.marina.arch.model import MARINA
+from src.marina.arch.marina import MARINA
+from src.marina.arch.spectre import SPECTRE
 from src.marina.train import train
 from src.marina.test import test
 from src.marina.core.const import DATASET_ROOT, WANDB_API_KEY_FILE, PVC_ROOT
-from src.marina.data.dataset import MARINADataModule
+from src.marina.data.marina import MARINADataModule
+from src.marina.data.spectre import SPECTREDataModule
 
 def seed_everything(seed):
     pl.seed_everything(seed, workers=True)
@@ -59,7 +61,7 @@ def seed_everything(seed):
     np.random.seed(seed)
 
 def main():
-    args: MARINAArgs = parse_args()
+    args: MARINAArgs | SPECTREArgs = parse_args()
     seed_everything(args.seed)
     today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     results_path = os.path.join(DATASET_ROOT, "results", args.experiment_name, today)
@@ -93,8 +95,8 @@ def main():
         wandb_run = None
 
     fp_loader = make_fp_loader(args.fp_type, entropy_out_dim = args.out_dim, retrieval_path=os.path.join(DATASET_ROOT, 'retrieval.pkl'))
-    model = MARINA(args, fp_loader)
-    data_module = MARINADataModule(args, fp_loader)
+    model = MARINA(args, fp_loader) if isinstance(args, MARINAArgs) else SPECTRE(args, fp_loader)
+    data_module = MARINADataModule(args, fp_loader) if isinstance(args, MARINAArgs) else SPECTREDataModule(args, fp_loader)
 
     if args.train:
         train(args, data_module, model, results_path, wandb_run=wandb_run)

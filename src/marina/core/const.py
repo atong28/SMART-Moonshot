@@ -36,3 +36,16 @@ DO_NOT_OVERRIDE = [
     'distill_target'
 ]
 
+HSQC_TYPE = 0
+C_NMR_TYPE = 1
+H_NMR_TYPE = 2
+MW_TYPE = 3
+MS_TYPE = 4
+
+INPUT_MAP = {
+    'hsqc': HSQC_TYPE,
+    'c_nmr': C_NMR_TYPE,
+    'h_nmr': H_NMR_TYPE,
+    'mw': MW_TYPE,
+    'mass_spec': MS_TYPE
+}

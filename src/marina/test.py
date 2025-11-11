@@ -1,23 +1,25 @@
 import os
-import json
-import sys
 import pickle
-from datetime import datetime
-import wandb
-import numpy as np
-import pandas as pd
-import matplotlib.pyplot as plt
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 import pytorch_lightning.callbacks as cb
 import pytorch_lightning as pl
 
-from .core.settings import MARINAArgs
-from .arch.model import MARINA
-from .data.dataset import MARINADataModule
+from .core.settings import MARINAArgs, SPECTREArgs
+from .arch.marina import MARINA
+from .arch.spectre import SPECTRE
+from .data.marina import MARINADataModule
 
 
-def test(args: MARINAArgs, data_module: MARINADataModule, model: MARINA, results_path: str, ckpt_path: str | None = None, wandb_run = None, sweep=False):
+def test(
+    args: MARINAArgs | SPECTREArgs,
+    data_module: MARINADataModule,
+    model: MARINA | SPECTRE,
+    results_path: str,
+    ckpt_path: str | None = None,
+    wandb_run = None,
+    sweep=False
+) -> dict:
     if not os.path.exists(results_path):
         os.makedirs(results_path, exist_ok=True)
     model.setup_ranker()
