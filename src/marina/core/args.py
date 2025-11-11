@@ -62,7 +62,7 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
     parser.add_argument('--lr', type=float)
     parser.add_argument('--eta_min', type=float)
     parser.add_argument('--weight_decay', type=float)
-    parser.add_argument('--scheduler', choices=['cosine'])
+    parser.add_argument('--scheduler', choices=['cosine', 'none'])
     parser.add_argument('--accumulate_grad_batches_num', type=int)
 
     # Loss and fingerprint configuration
@@ -72,7 +72,6 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
     # MARINA-specific arguments
 
     args = parser.parse_args()
-    
     # Determine which args class to use based on architecture
     arch = args.arch
     if args.load_from_checkpoint:
@@ -92,7 +91,8 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
         args.epochs = 1
     
     args_dict = {k: v for k, v in vars(args).items() if v is not None and k != 'arch'}
-
+    if args_dict['scheduler'] == 'none':
+        args_dict['scheduler'] = None
     if arch == 'spectre':
         args_dict.pop('hybrid_early_stopping', None)
     
