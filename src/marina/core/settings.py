@@ -74,7 +74,6 @@ class SPECTREArgs(SMARTArgs):
     mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
     heads: int = 8
     layers: int = 16
-    self_attn_layers: int = 2
     ff_dim: int = 3072
     out_dim: int = 16384
     
