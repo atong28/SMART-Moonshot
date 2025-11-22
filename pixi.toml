@@ -6,12 +6,13 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-marina_debug = { cmd = ["torchrun", "--nproc_per_node=2", "stage1.py", "--debug"] }
+"train.marina" = { cmd = "torchrun --nproc_per_node=1 --module src.main --debug --arch marina" }
+"train.specter" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch specter" }
 
-get_pods = { cmd = ["kubectl", "get", "pods"]}
-start_pod = { cmd = ["kubectl", "create", "-f", "nautilus/pods/devel.yaml"] }
-stop_pod = { cmd = ["kubectl", "delete", "pod", "devel-atong"] }
-delete_jobs = { cmd = ["kubectl", "delete", "jobs", "-l", "owner=atong"] }
+"kube.get_pods" = { cmd = "kubectl get pods" }
+"kube.start_pod" = { cmd = "kubectl create -f nautilus/pods/devel.yaml" }
+"kube.stop_pod" = { cmd = "kubectl delete pod devel-atong" }
+"kube.delete_jobs" = { cmd = "kubectl delete jobs -l owner=atong" }
 
 [dependencies]
 python = ">=3.11,<3.12"

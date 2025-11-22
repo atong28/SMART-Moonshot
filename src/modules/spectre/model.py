@@ -8,7 +8,7 @@ import torch.distributed as dist
 from torchmetrics import MeanMetric
 import numpy as np
 
-from ..args import SPECTREArgs
+from .args import SPECTREArgs
 
 from ..data.fp_loader import EntropyFPLoader
 from ..data.encoder import build_encoder

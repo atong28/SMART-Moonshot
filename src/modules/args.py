@@ -92,8 +92,8 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
     parser.add_argument('--lr', type=float)
     parser.add_argument('--eta_min', type=float)
     parser.add_argument('--weight_decay', type=float)
-    parser.add_argument('--scheduler', choices=['cosine', 'none'])
     parser.add_argument('--accumulate_grad_batches_num', type=int)
+    parser.add_argument('--scheduler', choices=['cosine', 'none'], default='cosine')
 
     # Loss and fingerprint configuration
     parser.add_argument("--lambda_hybrid", type=float)
