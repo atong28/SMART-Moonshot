@@ -181,7 +181,7 @@ class MARINADataModule(pl.LightningDataModule):
             self.train,
             shuffle=True,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
@@ -199,7 +199,7 @@ class MARINADataModule(pl.LightningDataModule):
         return [DataLoader(
             val_dl,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers

@@ -148,22 +148,12 @@ class SPECTREDataset(Dataset):
             type_indicators += type_indicator
         return torch.vstack(inputs), torch.tensor(type_indicators).long()
 
-
-def collate(batch):
-    items = tuple(zip(*batch))
-    inputs = pad_sequence([v for v in items[0]], batch_first=True)
-    fp = torch.stack(items[1])
-    type_indicator = pad_sequence([v for v in items[2]], batch_first=True)
-    return inputs, fp, type_indicator
-
-
 class SPECTREDataModule(pl.LightningDataModule):
     def __init__(self, args: SPECTREArgs, fp_loader: FPLoader):
         super().__init__()
         self.args = args
         self.batch_size = args.batch_size
         self.num_workers = args.num_workers
-        self.collate_fn = collate
         self.persistent_workers = bool(
             args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
@@ -199,7 +189,7 @@ class SPECTREDataModule(pl.LightningDataModule):
             self.train,
             shuffle=True,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
@@ -211,7 +201,7 @@ class SPECTREDataModule(pl.LightningDataModule):
         return [DataLoader(
             val_dl,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
@@ -223,8 +213,15 @@ class SPECTREDataModule(pl.LightningDataModule):
         return [DataLoader(
             test_dl,
             batch_size=self.batch_size,
-            collate_fn=self.collate_fn,
+            collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
             persistent_workers=self.persistent_workers
         ) for test_dl in self.test]
+
+    def _collate_fn(self, batch):
+        items = tuple(zip(*batch))
+        inputs = pad_sequence([v for v in items[0]], batch_first=True)
+        fp = torch.stack(items[1])
+        type_indicator = pad_sequence([v for v in items[2]], batch_first=True)
+        return inputs, fp, type_indicator
