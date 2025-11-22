@@ -25,13 +25,13 @@ from .modules.data.fp_loader import make_fp_loader
 from .modules.core.const import DATASET_ROOT
 
 ARCH_MODEL_CLASSES = {
-    "marina": MARINA,
-    "spectre": SPECTRE,
+    "MARINA": MARINA,
+    "SPECTRE": SPECTRE,
 }
 
 ARCH_DATAMODULE_CLASSES = {
-    "marina": MARINADataModule,
-    "spectre": SPECTREDataModule,
+    "MARINA": MARINADataModule,
+    "SPECTRE": SPECTREDataModule,
 }
 
 
@@ -52,8 +52,8 @@ def main():
         )
     )
     # create a mapping
-    model_class = ARCH_MODEL_CLASSES[args.arch]
-    data_module_class = ARCH_DATAMODULE_CLASSES[args.arch]
+    model_class = ARCH_MODEL_CLASSES[args.project_name]
+    data_module_class = ARCH_DATAMODULE_CLASSES[args.project_name]
     # define the model and data module
     model: MARINA | SPECTRE = model_class(args, fp_loader)
     data_module: MARINADataModule | SPECTREDataModule = data_module_class(

@@ -6,7 +6,7 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-"train.marina" = { cmd = "torchrun --nproc_per_node=1 --module src.main --debug --arch marina" }
+"train.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch marina" }
 "train.specter" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch specter" }
 
 "kube.get_pods" = { cmd = "kubectl get pods" }
