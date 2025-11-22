@@ -1,5 +1,5 @@
 import logging
-from typing import Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn.functional as F
@@ -48,7 +48,8 @@ class RankingSet(torch.nn.Module):
 
         # Keep as buffer so it moves with .to(device) but isn't a parameter
         self.register_buffer("data", store, persistent=False)
-        self.logger.info(f"[RankingSet] Initialized with {self.data.size(0)} sample(s); metric={self.metric}")
+        self.logger.info(
+            f"[RankingSet] Initialized with {self.data.size(0)} sample(s); metric={self.metric}")
 
     @property
     def device(self) -> torch.device:
@@ -88,7 +89,8 @@ class RankingSet(torch.nn.Module):
             q = torch.clamp(q, min=0)              # <- ensure nonnegative
             dot = self.data @ q.T                  # (N, Q)
             q_sq = (q * q).sum(dim=1, keepdim=True)  # (Q,1)
-            denom = (self.row_sq.unsqueeze(1) + q_sq.T - dot).clamp_min(self.eps)
+            denom = (self.row_sq.unsqueeze(1) +
+                     q_sq.T - dot).clamp_min(self.eps)
             return dot / denom
 
         else:

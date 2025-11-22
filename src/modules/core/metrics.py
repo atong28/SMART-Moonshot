@@ -1,18 +1,20 @@
-from typing import Optional
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+
 from torchmetrics.classification import (
     BinaryRecall,
     BinaryPrecision,
     BinaryF1Score,
     BinaryAccuracy,
 )
+
 from .ranker import RankingSet
 
 # Cosine over bit vectors (row-wise)
 do_cos = nn.CosineSimilarity(dim=1)
+
 
 def do_jaccard(pred: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
     """Binary Jaccard per row."""
@@ -22,11 +24,13 @@ def do_jaccard(pred: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
     union = torch.sum((pred + label) > 0, dim=1).clamp_min(1)
     return intersection / union
 
+
 # TorchMetrics (moved to correct device in cm())
 do_f1 = BinaryF1Score()
 do_recall = BinaryRecall()
 do_precision = BinaryPrecision()
 do_accuracy = BinaryAccuracy()
+
 
 @torch.no_grad()
 def cm(
@@ -40,6 +44,21 @@ def cm(
 ):
     """
     Binary FP metrics + retrieval via cosine.
+
+    Args:
+        model_output (torch.Tensor): _description_
+        fp_label (torch.Tensor): _description_
+        ranker (RankingSet): _description_
+        loss (torch.Tensor): _description_
+        loss_fn (_type_): _description_
+        thresh (float, optional): _description_. Defaults to 0.0.
+        no_ranking (bool, optional): _description_. Defaults to False.
+
+    Raises:
+        ValueError: _description_
+
+    Returns:
+        _type_: _description_
     """
     global do_f1, do_recall, do_precision, do_accuracy
 
@@ -67,11 +86,15 @@ def cm(
 
     # Positive/negative contribution losses (kept from original behavior)
     if np.isclose(thresh, 0.5):  # probabilities
-        pos_contr = torch.where(fp_label == 0, torch.zeros_like(fp_label, dtype=torch.float), model_output)
-        neg_contr = torch.where(fp_label == 1, torch.ones_like(fp_label, dtype=torch.float), model_output)
+        pos_contr = torch.where(fp_label == 0, torch.zeros_like(
+            fp_label, dtype=torch.float), model_output)
+        neg_contr = torch.where(fp_label == 1, torch.ones_like(
+            fp_label, dtype=torch.float), model_output)
     elif np.isclose(thresh, 0.0):  # logits
-        pos_contr = torch.where(fp_label == 0, -999 * torch.ones_like(fp_label, dtype=torch.float), model_output)
-        neg_contr = torch.where(fp_label == 1,  999 * torch.ones_like(fp_label, dtype=torch.float), model_output)
+        pos_contr = torch.where(
+            fp_label == 0, -999 * torch.ones_like(fp_label, dtype=torch.float), model_output)
+        neg_contr = torch.where(
+            fp_label == 1,  999 * torch.ones_like(fp_label, dtype=torch.float), model_output)
     else:
         raise ValueError(f"Weird threshold {thresh}")
 

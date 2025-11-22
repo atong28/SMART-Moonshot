@@ -1,6 +1,6 @@
+import math
 import logging
 from typing import Optional, Tuple
-import math
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
@@ -8,33 +8,36 @@ import torch.distributed as dist
 from torchmetrics import MeanMetric
 import numpy as np
 
-from ..core.settings import SPECTREArgs
+from ..args import SPECTREArgs
+
 from ..data.fp_loader import EntropyFPLoader
 from ..data.encoder import build_encoder
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
 from ..core.const import NON_SPECTRAL_INPUTS
-from .loss import BCECosineHybridLoss
+from ..loss import BCECosineHybridLoss
 
 logger = logging.getLogger("lightning")
+
 if dist.is_initialized():
     rank = dist.get_rank()
     if rank != 0:
         logger.setLevel(logging.WARNING)
 
+
 class SPECTRE(pl.LightningModule):
     def __init__(self, args: SPECTREArgs, fp_loader: EntropyFPLoader):
         super().__init__()
-        
+
         self.args = args
         self.fp_loader = fp_loader
-        
+
         if self.global_rank == 0:
             logger.info("[SPECTRE] Started Initializing")
 
         self.fp_length = args.out_dim
         self.out_dim = args.out_dim
-        
+
         self.batch_size = args.batch_size
         self.lr = args.lr
         self.weight_decay = args.weight_decay
@@ -45,13 +48,14 @@ class SPECTRE(pl.LightningModule):
 
         self.scheduler = args.scheduler
         self.dim_model = args.dim_model
-        
+
         self.use_jaccard = args.use_jaccard
-        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
-        
+        self.spectral_types = [
+            m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+
         self.ranker = None
         self.freeze_weights = args.freeze_weights
-        
+
         self.enc_nmr = build_encoder(
             args.dim_model,
             args.nmr_dim_coords,
@@ -70,13 +74,14 @@ class SPECTRE(pl.LightningModule):
             [args.mw_wavelength_bounds],
             args.use_peak_values
         )
-        self.encoder_list = [self.enc_nmr, self.enc_nmr, self.enc_nmr, self.enc_mw, self.enc_ms]
+        self.encoder_list = [self.enc_nmr, self.enc_nmr,
+                             self.enc_nmr, self.enc_mw, self.enc_ms]
         if self.global_rank == 0:
             logger.info(f"[SPECTRE] Using {str(self.enc_nmr.__class__)}")
 
-        self.loss = BCECosineHybridLoss(lambda_bce = args.lambda_hybrid)
+        self.loss = BCECosineHybridLoss(lambda_bce=args.lambda_hybrid)
 
-        # additional nn modules 
+        # additional nn modules
         self._val_mm = torch.nn.ModuleDict()
         self._test_mm = torch.nn.ModuleDict()
 
@@ -98,10 +103,11 @@ class SPECTRE(pl.LightningModule):
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
-        
+
         spectra_types = set(self.args.input_types) - NON_SPECTRAL_INPUTS
         if self.args.hybrid_early_stopping:
-            self.loss_weights = np.array([0.5] + [0.5/len(spectra_types)] * len(spectra_types))
+            self.loss_weights = np.array(
+                [0.5] + [0.5/len(spectra_types)] * len(spectra_types))
         else:
             self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
 
@@ -111,7 +117,8 @@ class SPECTRE(pl.LightningModule):
     def _get_metric_mm(self, store: nn.ModuleDict, feat: str, input_type: str, sync_on_compute: bool = True) -> MeanMetric:
         key = f"{feat}__{input_type}"
         if key not in store:
-            store[key] = MeanMetric(sync_on_compute=sync_on_compute).to(self.device)
+            store[key] = MeanMetric(
+                sync_on_compute=sync_on_compute).to(self.device)
         return store[key]
 
     def encode(
@@ -150,15 +157,17 @@ class SPECTRE(pl.LightningModule):
         points = torch.cat([latent, points], dim=1)
         out = self.transformer_encoder(points, src_key_padding_mask=mask)
         return out, mask
-    
+
     def forward(
         self,
         inputs: torch.Tensor,
         type_indicator: torch.Tensor,
         return_representations: bool = False
     ) -> torch.Tensor:
-        out, _ = self.encode(inputs, type_indicator)  # (b_s, seq_len, dim_model)
-        out_cls = self.fc(out[:, :1, :].squeeze(1))  # extracts cls token : (b_s, dim_model) -> (b_s, out_dim)
+        # (b_s, seq_len, dim_model)
+        out, _ = self.encode(inputs, type_indicator)
+        # extracts cls token : (b_s, dim_model) -> (b_s, out_dim)
+        out_cls = self.fc(out[:, :1, :].squeeze(1))
         if return_representations:
             return out.detach().cpu().numpy()
         return out_cls
@@ -167,32 +176,39 @@ class SPECTRE(pl.LightningModule):
         inputs, labels, type_indicator = batch
         out = self.forward(inputs, type_indicator)
         loss = self.loss(out, labels)
-        
-        self.log("tr/loss", loss, prog_bar=True, on_step=True, on_epoch=False, sync_dist=True)
+
+        self.log("tr/loss", loss, prog_bar=True,
+                 on_step=True, on_epoch=False, sync_dist=True)
         return loss
 
-    def validation_step(self, batch, batch_idx, dataloader_idx = 0):
+    def validation_step(self, batch, batch_idx, dataloader_idx=0):
         inputs, labels, type_indicator = batch
         out = self.forward(inputs, type_indicator)
         loss = self.loss(out, labels)
-        metrics, _ = cm(out, labels, self.ranker, loss, self.loss, no_ranking = True)
+        metrics, _ = cm(out, labels, self.ranker, loss,
+                        self.loss, no_ranking=True)
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
             else self.spectral_types[dataloader_idx - 1]
         for feat, val in metrics.items():
-            mm = self._get_metric_mm(self._val_mm, feat, input_type_key, sync_on_compute=True)
-            mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
-    
-    def test_step(self, batch, batch_idx, dataloader_idx = 0):
+            mm = self._get_metric_mm(
+                self._val_mm, feat, input_type_key, sync_on_compute=True)
+            mm.update(torch.tensor(
+                val, device=self.device, dtype=torch.float32))
+
+    def test_step(self, batch, batch_idx, dataloader_idx=0):
         inputs, labels, type_indicator = batch
         out = self.forward(inputs, type_indicator)
         loss = self.loss(out, labels)
-        
-        metrics, _ = cm(out, labels, self.ranker, loss, self.loss, no_ranking = False)
+
+        metrics, _ = cm(out, labels, self.ranker, loss,
+                        self.loss, no_ranking=False)
         input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
             else self.spectral_types[dataloader_idx - 1]
         for feat, val in metrics.items():
-            mm = self._get_metric_mm(self._test_mm, feat, input_type_key, sync_on_compute=False)
-            mm.update(torch.tensor(val, device=self.device, dtype=torch.float32))
+            mm = self._get_metric_mm(
+                self._test_mm, feat, input_type_key, sync_on_compute=False)
+            mm.update(torch.tensor(
+                val, device=self.device, dtype=torch.float32))
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         raise NotImplementedError()
@@ -209,11 +225,13 @@ class SPECTRE(pl.LightningModule):
         for feat in feats:
             vals_for_avg = []
             for input_type in input_types:
-                mm = self._get_metric_mm(self._val_mm, feat, input_type, sync_on_compute=True)
+                mm = self._get_metric_mm(
+                    self._val_mm, feat, input_type, sync_on_compute=True)
                 v = mm.compute().item()
                 di[f"val/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
+            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg,
+                                           weights=self.loss_weights))
 
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
@@ -234,12 +252,14 @@ class SPECTRE(pl.LightningModule):
             vals_for_avg = []
             for input_type in input_types:
                 print("3")
-                mm = self._get_metric_mm(self._test_mm, feat, input_type, sync_on_compute=False)
+                mm = self._get_metric_mm(
+                    self._test_mm, feat, input_type, sync_on_compute=False)
                 print("4")
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"test/mean_{feat}"] = float(np.average(vals_for_avg, weights=self.loss_weights))
+            di[f"test/mean_{feat}"] = float(np.average(
+                vals_for_avg, weights=self.loss_weights))
         print("5")
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)
@@ -250,13 +270,14 @@ class SPECTRE(pl.LightningModule):
 
     def configure_optimizers(self):
         if not self.scheduler:
-            return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay = self.weight_decay)
+            return torch.optim.AdamW(self.parameters(), lr=self.lr, weight_decay=self.weight_decay)
         elif self.scheduler == "cosine":
             opt = torch.optim.AdamW(self.parameters(), lr=self.lr,
-                                weight_decay=self.weight_decay, betas=(0.9, 0.95))
+                                    weight_decay=self.weight_decay, betas=(0.9, 0.95))
             total_steps = self.trainer.estimated_stepping_batches
             steps_per_epoch = max(1, total_steps // self.trainer.max_epochs)
-            warmup_steps = int((self.args.epochs // 10) * steps_per_epoch) if self.args.warmup else 0
+            warmup_steps = int((self.args.epochs // 10) *
+                               steps_per_epoch) if self.args.warmup else 0
 
             min_factor = self.args.eta_min / self.args.lr
 
@@ -278,8 +299,9 @@ class SPECTRE(pl.LightningModule):
                 },
             }
         else:
-            raise NotImplementedError(f"Scheduler {self.scheduler} not implemented for SPECTRE")
-        
+            raise NotImplementedError(
+                f"Scheduler {self.scheduler} not implemented for SPECTRE")
+
     def setup_ranker(self):
         store = self.fp_loader.load_rankingset(self.args.fp_type)
         self.ranker = RankingSet(store=store, metric="cosine")

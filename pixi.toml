@@ -7,6 +7,7 @@ version = "0.1.0"
 
 [tasks]
 marina_debug = { cmd = ["torchrun", "--nproc_per_node=2", "stage1.py", "--debug"] }
+
 get_pods = { cmd = ["kubectl", "get", "pods"]}
 start_pod = { cmd = ["kubectl", "create", "-f", "nautilus/pods/devel.yaml"] }
 stop_pod = { cmd = ["kubectl", "delete", "pod", "devel-atong"] }

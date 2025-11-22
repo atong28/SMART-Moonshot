@@ -1,38 +1,3 @@
-import logging
-import warnings
-import os
-os.environ["OMP_NUM_THREADS"] = "1"
-warnings.filterwarnings(
-    "ignore",
-    message="The PyTorch API of nested tensors is in prototype stage",
-    category=UserWarning,
-    module="torch.nn.modules.transformer"
-)
-warnings.filterwarnings(
-    "ignore",
-    message=r"It is recommended to use `self\.log\('.*', \.\.\., sync_dist=True\)` when logging on epoch level",
-    category=UserWarning,
-    module="pytorch_lightning.trainer.connectors.logger_connector.result"
-)
-os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
-
-def is_main_process():
-    return int(os.environ.get("RANK", 0)) == 0
-
-def init_logger(path):
-    logger = logging.getLogger("lightning")
-    logger.setLevel(logging.INFO if is_main_process() else logging.WARNING)
-    if not logger.handlers:
-        os.makedirs(path, exist_ok=True)
-        file_path = os.path.join(path, "logs.txt")
-        with open(file_path, "w"):
-            pass
-        fmt = logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        fh = logging.FileHandler(file_path)
-        fh.setFormatter(fmt)
-        logger.addHandler(fh)
-        logger.addHandler(logging.StreamHandler(sys.stdout))
-    return logger
 
 import sys
 import json
