@@ -14,6 +14,7 @@ import torch
 import lmdb
 
 from ..core.const import DATASET_ROOT
+
 from .fp_utils import (
     BitInfo as Feature,            # (bit_id, atom_symbol, frag_smiles, radius)
     compute_entropy,
@@ -25,12 +26,14 @@ from .fp_utils import (
     count_circular_substructures,
 )
 
+
 class _PIDAwareLMDB:
     """
     Read-only, lazily opened LMDB env that re-opens per-process (PID-aware).
     Keys are utf-8 stringified idx; values are raw bytes with header:
       b"{dtype}|{ndim}|{d0},{d1},...|<raw-bytes>"
     """
+
     def __init__(self, path: str):
         self.path = path
         self._env = None
@@ -65,6 +68,7 @@ class _PIDAwareLMDB:
         if buf is None:
             raise KeyError(f"Key {key_str} not found in {self.path}")
         return bytes(buf)  # header parse needs a tiny copy of header anyway
+
 
 class FPLoader:
     def __init__(self) -> None:
@@ -123,7 +127,8 @@ class EntropyFPLoader(FPLoader):
         with open(index_path, "rb") as f:
             index = pickle.load(f)
         # Build compact idx→split map
-        self._idx_to_split = {int(idx): entry.get("split", "train") for idx, entry in index.items()}
+        self._idx_to_split = {int(idx): entry.get("split", "train")
+                              for idx, entry in index.items()}
         self._index_loaded = True
 
     def _split_for_idx(self, idx: int) -> str:
@@ -134,7 +139,8 @@ class EntropyFPLoader(FPLoader):
         key = f"{split}__FragIdx"
         env = self._frag_envs.get(key)
         if env is None:
-            lmdb_path = os.path.join(self.dataset_root, "_lmdb", split, "FragIdx.lmdb")
+            lmdb_path = os.path.join(
+                self.dataset_root, "_lmdb", split, "FragIdx.lmdb")
             if not os.path.isdir(lmdb_path):
                 raise FileNotFoundError(f"Missing FragIdx shard: {lmdb_path}")
             env = _PIDAwareLMDB(lmdb_path)
@@ -247,7 +253,8 @@ class EntropyFPLoader(FPLoader):
             with open(counts_path, "rb") as f:
                 self.hashed_bits_count = pickle.load(f)
             return
-        counter = count_fragments_over_retrieval(self.retrieval_path, radius, num_procs=num_procs)
+        counter = count_fragments_over_retrieval(
+            self.retrieval_path, radius, num_procs=num_procs)
         write_counts(counter, counts_path)
         self.hashed_bits_count = counter
 
@@ -265,7 +272,8 @@ class EntropyFPLoader(FPLoader):
 
         self.max_radius = int(max_radius)
 
-        self.prepare_from_retrieval(radius=self.max_radius, num_procs=num_procs)
+        self.prepare_from_retrieval(
+            radius=self.max_radius, num_procs=num_procs)
         if not self.hashed_bits_count:
             raise RuntimeError("Failed to load or compute retrieval counts.")
 
@@ -273,25 +281,31 @@ class EntropyFPLoader(FPLoader):
                     for (bit_id, atom_symbol, frag, r), c in self.hashed_bits_count.items()
                     if r <= self.max_radius]
         if not filtered:
-            raise RuntimeError("No features <= max_radius found in retrieval counts.")
+            raise RuntimeError(
+                "No features <= max_radius found in retrieval counts.")
 
         bitinfos, counts = zip(*filtered)
         counts = np.asarray(counts)
-        logger.debug(f"Found {len(bitinfos)} features with radius <= {self.max_radius}.")
+        logger.debug(
+            f"Found {len(bitinfos)} features with radius <= {self.max_radius}.")
 
         retrieval_size = len(load_smiles_index(self.retrieval_path))
         ent = compute_entropy(counts, total_dataset_size=retrieval_size)
 
-        k = len(filtered) if (out_dim == "inf" or out_dim == float("inf")) else int(out_dim)
+        k = len(filtered) if (out_dim == "inf" or out_dim ==
+                              float("inf")) else int(out_dim)
         topk_idx = np.argpartition(-ent, kth=min(k, len(ent)-1))[:k]
         topk_sorted = sorted(topk_idx, key=lambda i: (-ent[i], bitinfos[i]))
 
         self.out_dim = len(topk_sorted)
-        self.bitinfo_to_fp_index_map = {bitinfos[i]: j for j, i in enumerate(topk_sorted)}
-        self.fp_index_to_bitinfo_map = {v: k for k, v in self.bitinfo_to_fp_index_map.items()}
+        self.bitinfo_to_fp_index_map = {
+            bitinfos[i]: j for j, i in enumerate(topk_sorted)}
+        self.fp_index_to_bitinfo_map = {
+            v: k for k, v in self.bitinfo_to_fp_index_map.items()}
 
         elapsed = time.time() - start
-        logger.info(f"Done! Selected {self.out_dim} features in {elapsed:.2f}s.")
+        logger.info(
+            f"Done! Selected {self.out_dim} features in {elapsed:.2f}s.")
 
     def build_mfp(self, idx: int) -> torch.Tensor:
         if self.out_dim is None:
@@ -306,7 +320,8 @@ class EntropyFPLoader(FPLoader):
         if self.out_dim is None or self.max_radius is None:
             raise RuntimeError("Call setup() first.")
         mfp = np.zeros(self.out_dim, dtype=np.float32)
-        present = count_circular_substructures(smiles, radius=self.max_radius, ignore_atoms=ignore_atoms or [])
+        present = count_circular_substructures(
+            smiles, radius=self.max_radius, ignore_atoms=ignore_atoms or [])
         for bitinfo in present.keys():
             col = self.bitinfo_to_fp_index_map.get(bitinfo)
             if col is not None and 0 <= col < self.out_dim:
@@ -330,7 +345,8 @@ class EntropyFPLoader(FPLoader):
     def build_fp_indices_for_smiles(self, smiles: str, ignore_atoms=None) -> Optional[List[int]]:
         if self.out_dim is None or self.max_radius is None:
             raise RuntimeError("Call setup() first.")
-        present = count_circular_substructures(smiles, radius=self.max_radius, ignore_atoms=ignore_atoms or [])
+        present = count_circular_substructures(
+            smiles, radius=self.max_radius, ignore_atoms=ignore_atoms or [])
         if not present:
             return []
         cols = set()
@@ -352,7 +368,8 @@ class EntropyFPLoader(FPLoader):
             if smi in seen:
                 continue
             seen.add(smi)
-            indices = self.build_fp_indices_for_smiles(smi, ignore_atoms=ignore_atoms)
+            indices = self.build_fp_indices_for_smiles(
+                smi, ignore_atoms=ignore_atoms)
             out[smi] = indices
         return out
 
@@ -377,57 +394,94 @@ class EntropyFPLoader(FPLoader):
         return csr
 
     def load_rankingset(self, fp_type: str):
-        rankingset_path = os.path.join(self.dataset_root, fp_type, "rankingset.pt")
+        rankingset_path = os.path.join(
+            self.dataset_root, fp_type, "rankingset.pt")
         return torch.load(rankingset_path, weights_only=True)
 
 
 def make_fp_loader(fp_type: str, entropy_out_dim=16384, max_radius=6, retrieval_path: Optional[str] = None):
+    """_summary_
+
+    Args:
+        fp_type (str): _description_
+        entropy_out_dim (int, optional): _description_. Defaults to 16384.
+        max_radius (int, optional): _description_. Defaults to 6.
+        retrieval_path (Optional[str], optional): _description_. Defaults to None.
+
+    Raises:
+        NotImplementedError: _description_
+
+    Returns:
+        _type_: _description_
+    """
     if fp_type == "RankingEntropy":
         fp_loader = EntropyFPLoader(retrieval_path=retrieval_path)
-        fp_loader.setup(entropy_out_dim, max_radius, retrieval_path=retrieval_path)
+        fp_loader.setup(entropy_out_dim, max_radius,
+                        retrieval_path=retrieval_path)
         return fp_loader
     raise NotImplementedError(f"FP type {fp_type} not implemented")
 
+
 def _cli():
-    parser = argparse.ArgumentParser(description="Fingerprint loader utilities (entropy selection + rankingset builder).")
+    parser = argparse.ArgumentParser(
+        description="Fingerprint loader utilities (entropy selection + rankingset builder).")
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    p_counts = sub.add_parser("prepare-counts", help="Precompute fragment presence counts on retrieval set.")
-    p_counts.add_argument("--retrieval", required=True, help="Path to retrieval index (.pkl/.json) with smiles.")
-    p_counts.add_argument("--dataset-root", default=DATASET_ROOT, help="Dataset root where counts file will be stored.")
+    p_counts = sub.add_parser(
+        "prepare-counts", help="Precompute fragment presence counts on retrieval set.")
+    p_counts.add_argument("--retrieval", required=True,
+                          help="Path to retrieval index (.pkl/.json) with smiles.")
+    p_counts.add_argument("--dataset-root", default=DATASET_ROOT,
+                          help="Dataset root where counts file will be stored.")
     p_counts.add_argument("--radius", type=int, default=6)
-    p_counts.add_argument("--num-procs", type=int, default=0, help="0=auto, else explicit number.")
+    p_counts.add_argument("--num-procs", type=int, default=0,
+                          help="0=auto, else explicit number.")
 
-    p_rank = sub.add_parser("rankingset", help="Run entropy feature selection and build/save CSR rankingset.")
-    p_rank.add_argument("--retrieval", required=True, help="Path to retrieval index (.pkl/.json) with smiles.")
+    p_rank = sub.add_parser(
+        "rankingset", help="Run entropy feature selection and build/save CSR rankingset.")
+    p_rank.add_argument("--retrieval", required=True,
+                        help="Path to retrieval index (.pkl/.json) with smiles.")
     p_rank.add_argument("--dataset-root", default=DATASET_ROOT)
     p_rank.add_argument("--out-dim", default=16384, help="int or 'inf'")
     p_rank.add_argument("--radius", type=int, default=6)
-    p_rank.add_argument("--fp-type", default="RankingEntropy", help="Subdir under dataset root to save artifacts.")
+    p_rank.add_argument("--fp-type", default="RankingEntropy",
+                        help="Subdir under dataset root to save artifacts.")
     p_rank.add_argument("--num-procs", type=int, default=0)
-    p_rank.add_argument("--no-save", action="store_true", help="If set, do not save rankingset to disk.")
+    p_rank.add_argument("--no-save", action="store_true",
+                        help="If set, do not save rankingset to disk.")
 
-    p_frag = sub.add_parser("fragments", help="Generate per-idx fragment lists for training set.")
-    p_frag.add_argument("--index", required=True, help="Path to training index (.pkl/.json) with smiles.")
-    p_frag.add_argument("--out-dir", required=True, help="Output directory (will create 'Fragments/' inside).")
+    p_frag = sub.add_parser(
+        "fragments", help="Generate per-idx fragment lists for training set.")
+    p_frag.add_argument("--index", required=True,
+                        help="Path to training index (.pkl/.json) with smiles.")
+    p_frag.add_argument("--out-dir", required=True,
+                        help="Output directory (will create 'Fragments/' inside).")
     p_frag.add_argument("--radius", type=int, default=6)
     p_frag.add_argument("--num-procs", type=int, default=0)
 
-    p_sfps = sub.add_parser("smiles-fps", help="Build {smiles: List[int]|None} indices and save to a pickle.")
-    p_sfps.add_argument("--smiles", required=True, help="Path to txt/json/pkl/csv with SMILES.")
-    p_sfps.add_argument("--out", required=True, help="Output pickle path (will contain {smiles: List[int] or None}).")
-    p_sfps.add_argument("--retrieval", required=True, help="Path to retrieval index (.pkl/.json) used for feature selection.")
+    p_sfps = sub.add_parser(
+        "smiles-fps", help="Build {smiles: List[int]|None} indices and save to a pickle.")
+    p_sfps.add_argument("--smiles", required=True,
+                        help="Path to txt/json/pkl/csv with SMILES.")
+    p_sfps.add_argument("--out", required=True,
+                        help="Output pickle path (will contain {smiles: List[int] or None}).")
+    p_sfps.add_argument("--retrieval", required=True,
+                        help="Path to retrieval index (.pkl/.json) used for feature selection.")
     p_sfps.add_argument("--dataset-root", default=DATASET_ROOT)
     p_sfps.add_argument("--out-dim", default=16384, help="int or 'inf'")
     p_sfps.add_argument("--radius", type=int, default=6)
-    p_sfps.add_argument("--ignore-atoms", default="", help="Comma-separated atom indices to ignore (rare; usually leave empty).")
-    p_sfps.add_argument("--num-procs", type=int, default=0, help="For counts/CSR prep if needed.")
+    p_sfps.add_argument("--ignore-atoms", default="",
+                        help="Comma-separated atom indices to ignore (rare; usually leave empty).")
+    p_sfps.add_argument("--num-procs", type=int, default=0,
+                        help="For counts/CSR prep if needed.")
 
     args = parser.parse_args()
 
     if args.cmd == "prepare-counts":
-        loader = EntropyFPLoader(dataset_root=args.dataset_root, retrieval_path=args.retrieval)
-        loader.prepare_from_retrieval(radius=args.radius, num_procs=args.num_procs)
+        loader = EntropyFPLoader(
+            dataset_root=args.dataset_root, retrieval_path=args.retrieval)
+        loader.prepare_from_retrieval(
+            radius=args.radius, num_procs=args.num_procs)
         print(f"Counts written to {loader._counts_path(args.radius)}")
 
     elif args.cmd == "rankingset":
@@ -437,18 +491,23 @@ def _cli():
         else:
             out_dim = int(out_dim)
 
-        loader = EntropyFPLoader(dataset_root=args.dataset_root, retrieval_path=args.retrieval)
-        loader.setup(out_dim, args.radius, retrieval_path=args.retrieval, num_procs=args.num_procs)
-        csr = loader.build_rankingset(fp_type=args.fp_type, save=(not args.no_save), num_procs=args.num_procs)
+        loader = EntropyFPLoader(
+            dataset_root=args.dataset_root, retrieval_path=args.retrieval)
+        loader.setup(out_dim, args.radius,
+                     retrieval_path=args.retrieval, num_procs=args.num_procs)
+        csr = loader.build_rankingset(fp_type=args.fp_type, save=(
+            not args.no_save), num_procs=args.num_procs)
         print(f"CSR shape: {tuple(csr.shape)}")
         if not args.no_save:
-            print(f"Saved rankingset to {os.path.join(args.dataset_root, args.fp_type, 'rankingset.pt')}")
+            print(
+                f"Saved rankingset to {os.path.join(args.dataset_root, args.fp_type, 'rankingset.pt')}")
 
     elif args.cmd == "fragments":
         generate_fragments_for_training(
             index_path=args.index, out_dir=args.out_dir, radius=args.radius, num_procs=args.num_procs
         )
-        print(f"Fragments written under {os.path.join(args.out_dir, 'Fragments')}")
+        print(
+            f"Fragments written under {os.path.join(args.out_dir, 'Fragments')}")
 
     elif args.cmd == "smiles-fps":
         out_dim = args.out_dim
@@ -459,13 +518,17 @@ def _cli():
 
         ignore_atoms = []
         if args.ignore_atoms.strip():
-            ignore_atoms = [int(x) for x in args.ignore_atoms.split(",") if x.strip().isdigit()]
+            ignore_atoms = [int(x) for x in args.ignore_atoms.split(
+                ",") if x.strip().isdigit()]
 
-        loader = EntropyFPLoader(dataset_root=args.dataset_root, retrieval_path=args.retrieval)
-        loader.setup(out_dim, args.radius, retrieval_path=args.retrieval, num_procs=args.num_procs)
+        loader = EntropyFPLoader(
+            dataset_root=args.dataset_root, retrieval_path=args.retrieval)
+        loader.setup(out_dim, args.radius,
+                     retrieval_path=args.retrieval, num_procs=args.num_procs)
 
         smiles_iter = loader._iter_smiles_from_path(args.smiles)
-        fp_dict = loader.build_fp_dict_for_smiles(smiles_iter, ignore_atoms=ignore_atoms)
+        fp_dict = loader.build_fp_dict_for_smiles(
+            smiles_iter, ignore_atoms=ignore_atoms)
 
         out_dir = os.path.dirname(os.path.abspath(args.out))
         if out_dir:
@@ -475,7 +538,8 @@ def _cli():
 
         n_total = len(fp_dict)
         n_none = sum(1 for v in fp_dict.values() if v is None)
-        print(f"Wrote {n_total} entries to {args.out} ({n_none} parse failures).")
+        print(
+            f"Wrote {n_total} entries to {args.out} ({n_none} parse failures).")
 
 
 if __name__ == "__main__":
