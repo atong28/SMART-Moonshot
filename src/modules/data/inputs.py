@@ -163,6 +163,20 @@ class SpectralInputLoader:
     def _load_mw(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
         return {'mw': torch.tensor(self.data_dict[idx]['mw'], dtype=self.dtype)}
 
+class MARINAInputLoader(SpectralInputLoader):
+    def _load_mw(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
+        mw = torch.tensor(self.data_dict[idx]['mw'], dtype=self.dtype)
+        mw = mw.view(1, 1)
+        return {'mw': mw}
+
+    def _load_mass_spec(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
+        mass_spec = self._get_tensor(idx, 'MassSpec')
+        if jittering > 0:
+            noise = torch.zeros_like(mass_spec)
+            noise[:, 0].copy_(torch.randn_like(mass_spec[:, 0]) * mass_spec[:, 0] / 100_000)
+            noise[:, 1].copy_(torch.randn_like(mass_spec[:, 1]) * mass_spec[:, 1] / 10)
+            mass_spec = mass_spec + noise
+        return {'mass_spec': mass_spec}
 
 class MFInputLoader:
     '''

@@ -12,8 +12,15 @@ class MARINAArgs(SMARTArgs):
 
     dim_model: int = 784
     nmr_dim_coords: List[int] = field(default_factory=lambda: [365, 365, 54])
-    ms_dim_coords: List[int] = field(default_factory=lambda: [392, 392, 0])
-    mw_dim_coords: List[int] = field(default_factory=lambda: [784, 0, 0])
+    nmr_is_sign_encoding: List[bool] = field(default_factory=lambda: [False, False, True])
+    c_nmr_dim_coords: List[int] = field(default_factory=lambda: [784])
+    c_nmr_is_sign_encoding: List[bool] = field(default_factory=lambda: [False])
+    h_nmr_dim_coords: List[int] = field(default_factory=lambda: [784])
+    h_nmr_is_sign_encoding: List[bool] = field(default_factory=lambda: [False])
+    ms_dim_coords: List[int] = field(default_factory=lambda: [392, 392])
+    ms_is_sign_encoding: List[bool] = field(default_factory=lambda: [False, False])
+    mw_dim_coords: List[int] = field(default_factory=lambda: [784])
+    mw_is_sign_encoding: List[bool] = field(default_factory=lambda: [False])
     heads: int = 8
     layers: int = 16
     self_attn_layers: int = 2
@@ -28,3 +35,5 @@ class MARINAArgs(SMARTArgs):
         default_factory=lambda: [0.01, 5000.0])
     intensity_wavelength_bounds: List[float] = field(
         default_factory=lambda: [0.001, 200.0])
+    mw_wavelength_bounds: List[float] = field(
+        default_factory=lambda: [0.01, 7000.0])

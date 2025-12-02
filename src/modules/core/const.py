@@ -13,7 +13,7 @@ DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
     'mw': 0.5
 }
 
-NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = {'mw'}
+NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = set()
 
 if 'nas-gpu' in __file__:
     print('Detected yuzu setup')

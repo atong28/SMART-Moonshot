@@ -17,7 +17,7 @@ from .args import MARINAArgs
 from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT, NON_SPECTRAL_INPUTS
 
 from ..data.fp_loader import FPLoader
-from ..data.inputs import SpectralInputLoader, MFInputLoader
+from ..data.inputs import MARINAInputLoader, MFInputLoader
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -69,7 +69,7 @@ class MARINADataset(Dataset):
                     f'[MARINADataset] Dataset split {split} is empty!')
 
             self.jittering = args.jittering if split == 'train' else 0.0
-            self.spectral_loader = SpectralInputLoader(
+            self.spectral_loader = MARINAInputLoader(
                 DATASET_ROOT, data, split=split)
             self.mfp_loader = MFInputLoader(fp_loader)
 
@@ -232,8 +232,6 @@ class MARINADataModule(pl.LightningDataModule):
         batch_inputs = {}
 
         for mod in INPUTS_CANONICAL_ORDER:
-            if mod in NON_SPECTRAL_INPUTS:
-                continue
             seqs = [d.get(mod) for d in dicts]
             if all(x is None for x in seqs):
                 continue
@@ -245,11 +243,6 @@ class MARINADataModule(pl.LightningDataModule):
                 for x in seqs
             ]
             batch_inputs[mod] = pad_sequence(seqs, batch_first=True)
-
-        mw_vals = [d.get("mw") for d in dicts]
-        if any(v is not None for v in mw_vals):
-            mw_floats = [float(v) if v is not None else 0.0 for v in mw_vals]
-            batch_inputs["mw"] = torch.tensor(mw_floats, dtype=torch.float)
 
         batch_fps = torch.stack(fps, dim=0)
         return batch_inputs, batch_fps

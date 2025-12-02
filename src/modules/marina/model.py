@@ -90,19 +90,29 @@ class MARINA(pl.LightningModule):
             args.dim_model,
             args.nmr_dim_coords,
             [args.c_wavelength_bounds, args.h_wavelength_bounds],
-            args.use_peak_values
+            args.use_peak_values,
+            args.nmr_is_sign_encoding
         )
         self.enc_ms = build_encoder(
             args.dim_model,
             args.ms_dim_coords,
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
-            args.use_peak_values
+            args.use_peak_values,
+            args.ms_is_sign_encoding
+        )
+        self.enc_mw = build_encoder(
+            args.dim_model,
+            args.mw_dim_coords,
+            [args.mw_wavelength_bounds],
+            args.use_peak_values,
+            args.mw_is_sign_encoding
         )
         self.encoders = {
             "hsqc": self.enc_nmr,
             "h_nmr": self.enc_nmr,
             "c_nmr": self.enc_nmr,
-            "mass_spec": self.enc_ms
+            "mass_spec": self.enc_ms,
+            "mw": self.enc_mw
         }
         self.encoders = nn.ModuleDict(
             {k: v for k, v in self.encoders.items() if k in self.args.input_types})
@@ -117,6 +127,10 @@ class MARINA(pl.LightningModule):
             )
             for modality in self.encoders
         })
+        self.mod_tokens = nn.ParameterDict({
+            modality: nn.Parameter(torch.randn(1, 1, self.dim_model))
+            for modality in self.encoders
+        })
         self.cross_blocks = nn.ModuleList([
             CrossAttentionBlock(
                 dim_model=self.dim_model,
@@ -127,7 +141,6 @@ class MARINA(pl.LightningModule):
             for _ in range(self.layers)
         ])
         self.global_cls = nn.Parameter(torch.randn(1, 1, self.dim_model))
-        self.mw_embed = nn.Linear(1, self.dim_model)
         self.fc = nn.Linear(self.dim_model, self.out_dim)
         self.loss = BCECosineHybridLoss(lambda_bce=args.lambda_hybrid)
         self._val_mm = torch.nn.ModuleDict()
@@ -157,21 +170,15 @@ class MARINA(pl.LightningModule):
         all_points = []
         all_masks = []
         for m, x in batch.items():
-            if m in NON_SPECTRAL_INPUTS:
-                continue
             B, L, D_in = x.shape
             mask = (x.abs().sum(-1) == 0)
-            x_flat = x.view(B * L, D_in)
-            enc_flat = self.encoders[m](x_flat)
-            enc_seq = enc_flat.view(B, L, self.dim_model)
+            enc_seq = self.encoders[m](x.view(B * L, D_in)).view(B, L, self.dim_model)
+            mod_token = self.mod_tokens[m].to(enc_seq.device).expand(B, 1, -1)
+            enc_seq = torch.cat([mod_token, enc_seq], dim=1)
+            mask = torch.cat([torch.zeros(B, 1, dtype=torch.bool, device=enc_seq.device), mask], dim=1)
             attended = self.self_attn[m](enc_seq, src_key_padding_mask=mask)
             all_points.append(attended)
             all_masks.append(mask)
-        if "mw" in batch:
-            mw_feat = self.mw_embed(batch["mw"].unsqueeze(-1)).unsqueeze(1)
-            all_points.append(mw_feat)
-            all_masks.append(torch.zeros(
-                B, 1, dtype=torch.bool, device=mw_feat.device))
         joint_seq = torch.cat(all_points, dim=1)
         joint_mask = torch.cat(all_masks, dim=1)
         global_token = self.global_cls.expand(B, 1, -1)

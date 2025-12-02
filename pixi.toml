@@ -6,8 +6,10 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-"train.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch marina" }
-"train.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch spectre" }
+"train.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main --arch marina" }
+"train.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main --arch spectre" }
+"debug.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch marina" }
+"debug.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main --debug --arch spectre" }
 
 "kube.get_pods" = { cmd = "kubectl get pods" }
 "kube.start_pod" = { cmd = "kubectl create -f nautilus/pods/devel.yaml" }

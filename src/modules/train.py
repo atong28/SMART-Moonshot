@@ -84,7 +84,7 @@ def train(
         logger=wandb_logger,
         callbacks=[early_stopping, lr_monitor, ckpt_callback],
         accumulate_grad_batches=args.accumulate_grad_batches_num,
-        strategy='ddp_find_unused_parameters_true',
+        strategy='ddp',
         gradient_clip_val=1.0
     )
 

@@ -60,19 +60,22 @@ class SPECTRE(pl.LightningModule):
             args.dim_model,
             args.nmr_dim_coords,
             [args.c_wavelength_bounds, args.h_wavelength_bounds],
-            args.use_peak_values
+            args.use_peak_values,
+            args.nmr_is_sign_encoding
         )
         self.enc_ms = build_encoder(
             args.dim_model,
             args.ms_dim_coords,
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
-            args.use_peak_values
+            args.use_peak_values,
+            args.ms_is_sign_encoding
         )
         self.enc_mw = build_encoder(
             args.dim_model,
             args.mw_dim_coords,
             [args.mw_wavelength_bounds],
-            args.use_peak_values
+            args.use_peak_values,
+            args.mw_is_sign_encoding
         )
         self.encoder_list = [self.enc_nmr, self.enc_nmr,
                              self.enc_nmr, self.enc_mw, self.enc_ms]
