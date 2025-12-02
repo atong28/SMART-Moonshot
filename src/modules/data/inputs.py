@@ -137,7 +137,6 @@ class SpectralInputLoader:
     def _load_c_nmr(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
         c_nmr = self._get_tensor(idx, 'C_NMR')
         c_nmr = c_nmr.view(-1,1)                   # (N,1)
-        c_nmr = F.pad(c_nmr, (0,2), "constant", 0) # -> (N,3)
         if jittering > 0:
             c_nmr = c_nmr + torch.randn_like(c_nmr) * jittering
         return {'c_nmr': c_nmr}
@@ -145,7 +144,6 @@ class SpectralInputLoader:
     def _load_h_nmr(self, idx: int, jittering: float = 0.0) -> Dict[str, torch.Tensor]:
         h_nmr = self._get_tensor(idx, 'H_NMR')
         h_nmr = h_nmr.view(-1,1)                    # (N,1)
-        h_nmr = F.pad(h_nmr, (1,1), "constant", 0)  # -> (N,3)
         if jittering > 0:
             h_nmr = h_nmr + torch.randn_like(h_nmr) * jittering * 0.1
         return {'h_nmr': h_nmr}
