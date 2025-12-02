@@ -17,7 +17,8 @@ class SMARTArgs:
     )
 
     requires: List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']] = field(
-        default_factory=lambda: [])
+        default_factory=lambda: []
+    )
 
     debug: bool = False
     batch_size: int = 32
@@ -43,4 +44,3 @@ class SMARTArgs:
     visualize: bool = False
     lambda_hybrid: float = 0.0
     fp_type: Literal['RankingEntropy'] = 'RankingEntropy'
-    hybrid_early_stopping: bool = False

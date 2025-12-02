@@ -70,7 +70,6 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
     add_bool_flag(parser, 'use_jaccard', False)
     add_bool_flag(parser, 'warmup', True)
     add_bool_flag(parser, 'visualize', False)
-    add_bool_flag(parser, 'hybrid_early_stopping', False)
 
     # Data loading and training configuration
     parser.add_argument('--batch_size', type=int)
@@ -124,8 +123,6 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
         args).items() if v is not None and k != 'arch'}
     if args_dict['scheduler'] == 'none':
         args_dict['scheduler'] = None
-    if arch == 'spectre':
-        args_dict.pop('hybrid_early_stopping', None)
 
     if arch == 'marina':
         return MARINAArgs(**args_dict)

@@ -107,13 +107,6 @@ class SPECTRE(pl.LightningModule):
             for parameter in self.parameters():
                 parameter.requires_grad = False
 
-        spectra_types = set(self.args.input_types) - NON_SPECTRAL_INPUTS
-        if self.args.hybrid_early_stopping:
-            self.loss_weights = np.array(
-                [0.5] + [0.5/len(spectra_types)] * len(spectra_types))
-        else:
-            self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
-
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
 
@@ -233,8 +226,7 @@ class SPECTRE(pl.LightningModule):
                 v = mm.compute().item()
                 di[f"val/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg,
-                                           weights=self.loss_weights))
+            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg))
 
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
@@ -261,8 +253,7 @@ class SPECTRE(pl.LightningModule):
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"test/mean_{feat}"] = float(np.average(
-                vals_for_avg, weights=self.loss_weights))
+            di[f"test/mean_{feat}"] = float(np.average(vals_for_avg))
         print("5")
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)

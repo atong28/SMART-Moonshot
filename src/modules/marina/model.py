@@ -61,7 +61,6 @@ class CrossAttentionBlock(nn.Module):
         out = self.norm2(q1 + ff_out)
         return out
 
-
 class MARINA(pl.LightningModule):
     def __init__(self, args: MARINAArgs, fp_loader: FPLoader):
         super().__init__()
@@ -148,11 +147,6 @@ class MARINA(pl.LightningModule):
                 parameter.requires_grad = False
         self.ranker = None
         self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
-        if self.args.hybrid_early_stopping:
-            self.loss_weights = np.array(
-                [0.5] + [0.5/len(self.spectral_types)] * len(self.spectral_types))
-        else:
-            self.loss_weights = np.array([1.0] + [0.0] * len(self.spectral_types))
         if self.global_rank == 0:
             logger.info("[MARINA] Initialized")
 
@@ -253,8 +247,7 @@ class MARINA(pl.LightningModule):
                 v = mm.compute().item()
                 di[f"val/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg,
-                                           weights=self.loss_weights))
+            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg))
 
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
@@ -278,8 +271,7 @@ class MARINA(pl.LightningModule):
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
-            di[f"test/mean_{feat}"] = float(np.average(
-                vals_for_avg, weights=self.loss_weights))
+            di[f"test/mean_{feat}"] = float(np.average(vals_for_avg))
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)
         for mm in self._test_mm.values():
