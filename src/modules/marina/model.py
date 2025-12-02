@@ -8,7 +8,6 @@ from torchmetrics import MeanMetric
 import numpy as np
 
 from .args import MARINAArgs
-from .attention import MultiHeadAttentionCore
 
 from ..core.const import NON_SPECTRAL_INPUTS, SELF_ATTN_INPUTS
 from ..core.metrics import cm
@@ -34,11 +33,12 @@ class CrossAttentionBlock(nn.Module):
 
     def __init__(self, dim_model, num_heads, ff_dim, dropout=0.1):
         super().__init__()
-        self.attn = MultiHeadAttentionCore(
+        self.attn = nn.MultiheadAttention(
             embed_dim=dim_model,
             num_heads=num_heads,
             dropout=dropout,
             bias=True,
+            batch_first=True,
         )
         self.norm1 = nn.LayerNorm(dim_model)
         self.ff = nn.Sequential(
@@ -50,10 +50,10 @@ class CrossAttentionBlock(nn.Module):
         self.norm2 = nn.LayerNorm(dim_model)
 
     def forward(self, query, key, value, key_padding_mask=None):
-        attn_out = self.attn(
-            query=query,
-            key=key,
-            value=value,
+        attn_out, _ = self.attn(
+            query,
+            key,
+            value,
             key_padding_mask=key_padding_mask,
         )
         q1 = self.norm1(query + attn_out)
@@ -87,27 +87,36 @@ class MARINA(pl.LightningModule):
             args.dim_model,
             args.nmr_dim_coords,
             [args.c_wavelength_bounds, args.h_wavelength_bounds],
-            args.use_peak_values,
             args.nmr_is_sign_encoding
+        )
+        self.enc_c_nmr = build_encoder(
+            args.dim_model,
+            args.c_nmr_dim_coords,
+            [args.c_wavelength_bounds],
+            args.c_nmr_is_sign_encoding
+        )
+        self.enc_h_nmr = build_encoder(
+            args.dim_model,
+            args.h_nmr_dim_coords,
+            [args.h_wavelength_bounds],
+            args.h_nmr_is_sign_encoding
         )
         self.enc_ms = build_encoder(
             args.dim_model,
             args.ms_dim_coords,
             [args.mz_wavelength_bounds, args.intensity_wavelength_bounds],
-            args.use_peak_values,
             args.ms_is_sign_encoding
         )
         self.enc_mw = build_encoder(
             args.dim_model,
             args.mw_dim_coords,
             [args.mw_wavelength_bounds],
-            args.use_peak_values,
             args.mw_is_sign_encoding
         )
         self.encoders = {
             "hsqc": self.enc_nmr,
-            "h_nmr": self.enc_nmr,
-            "c_nmr": self.enc_nmr,
+            "h_nmr": self.enc_h_nmr,
+            "c_nmr": self.enc_c_nmr,
             "mass_spec": self.enc_ms,
             "mw": self.enc_mw
         }

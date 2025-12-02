@@ -136,7 +136,6 @@ class SignCoordinateEncoder(torch.nn.Module):
         dim_model,
         dim_coords,
         wavelength_bounds=None,
-        use_peak_values=False,
         is_sign_encoding=None
     ):
         super().__init__()
@@ -154,7 +153,6 @@ class SignCoordinateEncoder(torch.nn.Module):
         
         self.is_sign_encoding = is_sign_encoding
         self.dim_coords = dim_coords
-        self.use_peak_values = use_peak_values
         
         # Find sign dimension and calculate sizes in one pass
         self.sign_dim_idx = None
@@ -222,10 +220,7 @@ class SignCoordinateEncoder(torch.nn.Module):
             if is_sign:
                 # Sign encoding dimension
                 sign_dim = X[:, idx:idx+1]  # shape (B*N, 1)
-                if self.use_peak_values:
-                    encoded = sign_dim.expand(-1, self.sign_embedding_size)
-                else:
-                    encoded = torch.sign(sign_dim).expand(-1, self.sign_embedding_size)
+                encoded = torch.sign(sign_dim).expand(-1, self.sign_embedding_size)
                 embeddings.append(encoded)
             elif encoder is not None:
                 # Positional encoding dimension
@@ -238,7 +233,6 @@ def build_encoder(
     dim_model: int, 
     dim_coords: List[int],
     wavelength_bounds=None,
-    use_peak_values=False,
     is_sign_encoding=None
 ):
-    return SignCoordinateEncoder(dim_model, dim_coords, wavelength_bounds, use_peak_values, is_sign_encoding)
+    return SignCoordinateEncoder(dim_model, dim_coords, wavelength_bounds, is_sign_encoding)

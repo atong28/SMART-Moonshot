@@ -22,13 +22,12 @@ class SMARTArgs:
 
     debug: bool = False
     batch_size: int = 32
-    num_workers: int = 8
+    num_workers: int = 4
     epochs: int = 750
     patience: int = 30
     persistent_workers: bool = True
 
     jittering: float = 1.0
-    use_peak_values: bool = False
 
     # training args
     lr: float = 2e-4

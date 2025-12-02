@@ -65,7 +65,6 @@ def parse_args() -> Union[MARINAArgs, SPECTREArgs]:
     add_bool_flag(parser, 'train', True)
     add_bool_flag(parser, 'test', True)
     add_bool_flag(parser, 'persistent_workers', True)
-    add_bool_flag(parser, 'use_peak_values', False)
     add_bool_flag(parser, 'freeze_weights', False)
     add_bool_flag(parser, 'use_jaccard', False)
     add_bool_flag(parser, 'warmup', True)
