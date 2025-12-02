@@ -10,7 +10,7 @@ import numpy as np
 from .args import MARINAArgs
 from .attention import MultiHeadAttentionCore
 
-from ..core.const import NON_SPECTRAL_INPUTS
+from ..core.const import NON_SPECTRAL_INPUTS, SELF_ATTN_INPUTS
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
 
@@ -79,8 +79,6 @@ class MARINA(pl.LightningModule):
         self.layers = args.layers
         self.ff_dim = args.ff_dim
         self.dropout = args.dropout
-        self.spectral_types = [
-            m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
         self.scheduler = args.scheduler
         self.dim_model = args.dim_model
         self.use_jaccard = args.use_jaccard
@@ -149,12 +147,12 @@ class MARINA(pl.LightningModule):
             for parameter in self.parameters():
                 parameter.requires_grad = False
         self.ranker = None
-        spectra_types = set(self.args.input_types) - NON_SPECTRAL_INPUTS
+        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
         if self.args.hybrid_early_stopping:
             self.loss_weights = np.array(
-                [0.5] + [0.5/len(spectra_types)] * len(spectra_types))
+                [0.5] + [0.5/len(self.spectral_types)] * len(self.spectral_types))
         else:
-            self.loss_weights = np.array([1.0] + [0.0] * len(spectra_types))
+            self.loss_weights = np.array([1.0] + [0.0] * len(self.spectral_types))
         if self.global_rank == 0:
             logger.info("[MARINA] Initialized")
 
@@ -170,6 +168,8 @@ class MARINA(pl.LightningModule):
         all_points = []
         all_masks = []
         for m, x in batch.items():
+            if m not in SELF_ATTN_INPUTS:
+                continue
             B, L, D_in = x.shape
             mask = (x.abs().sum(-1) == 0)
             enc_seq = self.encoders[m](x.view(B * L, D_in)).view(B, L, self.dim_model)

@@ -124,8 +124,7 @@ class MARINADataModule(pl.LightningDataModule):
             args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
         mods = [m for m in args.input_types if m not in NON_SPECTRAL_INPUTS]
-        self.test_types = [args.input_types] + \
-            [[m] + list(NON_SPECTRAL_INPUTS) for m in mods]
+        self.test_types = [args.input_types] + [[m] for m in mods]
         self._fit_is_setup = False
         self._test_is_setup = False
 

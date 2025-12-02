@@ -34,7 +34,6 @@ ARCH_DATAMODULE_CLASSES = {
     "SPECTRE": SPECTREDataModule,
 }
 
-
 def main():
     # create timestamp for run
     today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
