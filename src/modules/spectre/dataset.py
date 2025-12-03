@@ -10,7 +10,6 @@ from itertools import islice
 
 from torch.utils.data import DataLoader, Dataset
 import torch.distributed as dist
-from torch.nn import functional as F
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
@@ -20,7 +19,7 @@ from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, DATASET_ROOT, NON_SPECTRAL_
     C_NMR_TYPE, H_NMR_TYPE, MW_TYPE, MS_TYPE, INPUT_MAP
 
 from ..data.fp_loader import FPLoader
-from ..data.inputs import SpectralInputLoader, MFInputLoader
+from ..data.inputs import SPECTREInputLoader, MFInputLoader
 
 logger = logging.getLogger("lightning")
 if dist.is_initialized():
@@ -72,7 +71,7 @@ class SPECTREDataset(Dataset):
                     f'[MARINADataset] Dataset split {split} is empty!')
 
             self.jittering = args.jittering if split == 'train' else 0.0
-            self.spectral_loader = SpectralInputLoader(
+            self.spectral_loader = SPECTREInputLoader(
                 DATASET_ROOT, data, split=split)
             self.mfp_loader = MFInputLoader(fp_loader)
 
