@@ -1,7 +1,7 @@
 from typing import List
 from pydantic.dataclasses import dataclass
 from dataclasses import field
-
+import tyro
 from ..core.args import SMARTArgs
 
 @dataclass

@@ -33,7 +33,7 @@ class SMARTArgs:
     lr: float = 2e-4
     eta_min: float = 1e-5
     weight_decay: float = 0.0
-    scheduler: Optional[Literal['cosine']] = 'cosine'
+    scheduler: Literal['cosine', 'none'] = 'cosine'
     freeze_weights: bool = False
     use_jaccard: bool = False
     warmup: bool = True

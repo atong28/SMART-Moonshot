@@ -1,7 +1,7 @@
 from typing import Literal, List, Optional
 from pydantic.dataclasses import dataclass
 from dataclasses import field
-
+import tyro
 from ..core import SMARTArgs
 
 
@@ -11,7 +11,7 @@ class MARINAArgs(SMARTArgs):
     project_name: str = 'MARINA'
 
     dim_model: int = 784
-    nmr_dim_coords: List[int] = field(default_factory=lambda: [365, 365, 54])
+    nmr_dim_coords: List[int] = field(default_factory=lambda: [391, 391, 2])
     nmr_is_sign_encoding: List[bool] = field(default_factory=lambda: [False, False, True])
     c_nmr_dim_coords: List[int] = field(default_factory=lambda: [784])
     c_nmr_is_sign_encoding: List[bool] = field(default_factory=lambda: [False])
