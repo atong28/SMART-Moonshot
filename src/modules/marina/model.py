@@ -243,10 +243,8 @@ class MARINA(pl.LightningModule):
         keys = list(self._val_mm.keys())
         if not keys:
             return
-
         input_types = sorted({k.split("__", 1)[1] for k in keys})
         feats = sorted({k.split("__", 1)[0] for k in keys})
-
         di = {}
         for feat in feats:
             vals_for_avg = []
@@ -255,12 +253,11 @@ class MARINA(pl.LightningModule):
                     self._val_mm, feat, input_type, sync_on_compute=True)
                 v = mm.compute().item()
                 di[f"val/mean_{feat}/{input_type}"] = v
+                if input_type == "all_inputs":
+                    di[f"val/mean_{feat}"] = v
                 vals_for_avg.append(v)
-            di[f"val/mean_{feat}"] = float(np.average(vals_for_avg))
-
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False, sync_dist=True)
-
         for mm in self._val_mm.values():
             mm.reset()
 
@@ -270,7 +267,6 @@ class MARINA(pl.LightningModule):
             return
         input_types = sorted({k.split("__", 1)[1] for k in keys})
         feats = sorted({k.split("__", 1)[0] for k in keys})
-
         di = {}
         for feat in feats:
             vals_for_avg = []
@@ -279,8 +275,9 @@ class MARINA(pl.LightningModule):
                     self._test_mm, feat, input_type, sync_on_compute=False)
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
+                if input_type == "all_inputs":
+                    di[f"test/mean_{feat}"] = v
                 vals_for_avg.append(v)
-            di[f"test/mean_{feat}"] = float(np.average(vals_for_avg))
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)
         for mm in self._test_mm.values():
