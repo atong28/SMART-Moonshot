@@ -52,7 +52,10 @@ class SPECTRE(pl.LightningModule):
         self.use_jaccard = args.use_jaccard
         self.spectral_types = [
             m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
-
+        if 'hsqc' in self.args.input_types and 0.0 < self.args.drop_me_percent < 1.0:
+            self.spectral_types.append('normal_hsqc')
+        if 'hsqc' in self.args.input_types and self.args.drop_me_percent == 1.0:
+            self.spectral_types[self.spectral_types.index('hsqc')] = 'normal_hsqc'
         self.ranker = None
         self.freeze_weights = args.freeze_weights
 
@@ -103,7 +106,6 @@ class SPECTRE(pl.LightningModule):
         if self.freeze_weights:
             for parameter in self.parameters():
                 parameter.requires_grad = False
-
         if self.global_rank == 0:
             logger.info("[SPECTRE] Initialized")
 

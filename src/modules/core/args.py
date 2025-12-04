@@ -44,4 +44,4 @@ class SMARTArgs:
     lambda_hybrid: float = 0.0
     fp_type: Literal['RankingEntropy'] = 'RankingEntropy'
     
-    drop_me_sign_percentage: float = 0.5
+    drop_me_percent: float = 0.5 # 0 to only use me hsqc, 1 to only use normal hsqc

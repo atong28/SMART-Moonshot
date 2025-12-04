@@ -1,7 +1,7 @@
 import os
 import json
 from typing import Union, Annotated
-
+import logging
 import tyro
 
 from .core.const import DO_NOT_OVERRIDE
@@ -49,6 +49,7 @@ def parse_args() -> ArchArgs:
     
     if getattr(args, "debug", False):
         args.epochs = 1
+        logging.getLogger("lightning").setLevel(logging.DEBUG)
     
     if hasattr(args, "scheduler") and args.scheduler == "none":
         args.scheduler = None

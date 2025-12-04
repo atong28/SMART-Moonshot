@@ -5,7 +5,7 @@ import traceback
 import sys
 import logging
 from typing import Any, Optional
-
+from copy import deepcopy
 from itertools import islice
 
 from torch.utils.data import DataLoader, Dataset
@@ -15,8 +15,7 @@ import pytorch_lightning as pl
 
 from .args import SPECTREArgs
 
-from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, DATASET_ROOT, NON_SPECTRAL_INPUTS, HSQC_TYPE, \
-    C_NMR_TYPE, H_NMR_TYPE, MW_TYPE, MS_TYPE, INPUT_MAP
+from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, DATASET_ROOT, NON_SPECTRAL_INPUTS, MW_TYPE, INPUT_MAP
 
 from ..data.fp_loader import FPLoader
 from ..data.inputs import SPECTREInputLoader, MFInputLoader
@@ -31,14 +30,22 @@ if dist.is_initialized():
 class SPECTREDataset(Dataset):
     def __init__(self, args: SPECTREArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
         try:
-            self.args = args
+            self.args = deepcopy(args)
             self.split = split
             if split != 'train':
-                args.requires = args.input_types
+                if 'normal_hsqc' in override_input_types:
+                    self.args.input_types = ['hsqc']
+                    self.args.drop_me_percent = 1.0
+                    override_input_types = ['hsqc']
+                elif 'hsqc' in override_input_types:
+                    self.args.drop_me_percent = 0.0
+                self.args.requires = self.args.input_types
+            
+            self.input_types = self.args.input_types if override_input_types is None else override_input_types
+            self.requires = self.args.requires if override_input_types is None else override_input_types
+
             logger.debug(
-                f'[MARINADataset] Initializing {split} dataset with input types {args.input_types} and required inputs {args.requires}')
-            self.input_types = args.input_types if override_input_types is None else override_input_types
-            self.requires = args.requires if override_input_types is None else override_input_types
+                f'[SPECTREDataset] Initializing {split} dataset with input types {self.input_types} and required inputs {self.requires}')
 
             with open(os.path.join(DATASET_ROOT, 'index.pkl'), 'rb') as f:
                 data: dict[int, Any] = pickle.load(f)
@@ -53,22 +60,22 @@ class SPECTREDataset(Dataset):
             }
             data_len = len(data)
             logger.debug(
-                f'[MARINADataset] Requiring the following items to be present: {self.requires}')
+                f'[SPECTREDataset] Requiring the following items to be present: {self.requires}')
             data = {
                 idx: entry for idx, entry in data.items()
                 if all(entry[f'has_{dtype}'] for dtype in self.requires)
             }
             logger.debug(
-                f'[MARINADataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
-            logger.debug(f'[MARINADataset] Dataset size: {len(data)}')
+                f'[SPECTREDataset] Purged {data_len - len(data)}/{data_len} items. {len(data)} items remain')
+            logger.debug(f'[SPECTREDataset] Dataset size: {len(data)}')
             if args.debug and len(data) > DEBUG_LEN:
                 logger.debug(
-                    f'[MARINADataset] Debug mode activated. Data length set to {DEBUG_LEN}')
+                    f'[SPECTREDataset] Debug mode activated. Data length set to {DEBUG_LEN}')
                 data = dict(islice(data.items(), DEBUG_LEN))
 
             if len(data) == 0:
                 raise RuntimeError(
-                    f'[MARINADataset] Dataset split {split} is empty!')
+                    f'[SPECTREDataset] Dataset split {split} is empty!')
 
             self.jittering = args.jittering if split == 'train' else 0.0
             self.spectral_loader = SPECTREInputLoader(
@@ -77,12 +84,12 @@ class SPECTREDataset(Dataset):
 
             self.data = list(data.items())
 
-            logger.debug('[MARINADataset] Setup complete!')
+            logger.debug('[SPECTREDataset] Setup complete!')
 
         except Exception:
             logger.error(traceback.format_exc())
             logger.error(
-                '[MARINADataset] While instantiating the dataset, ran into the above error.')
+                '[SPECTREDataset] While instantiating the dataset, ran into the above error.')
             sys.exit(1)
 
     def __len__(self):
@@ -93,7 +100,11 @@ class SPECTREDataset(Dataset):
         if self.split != 'train':
             input_types = set(self.input_types)
             data_inputs = self.spectral_loader.load(
-                data_idx, input_types, jittering=self.jittering)
+                data_idx,
+                input_types,
+                jittering=self.jittering,
+                drop_me_sign=self.args.drop_me_percent == 1.0
+            )
             mfp = self.mfp_loader.load(data_idx)
 
             inputs, type_indicator = self._pad_and_stack_input(data_inputs)
@@ -119,7 +130,7 @@ class SPECTREDataset(Dataset):
                   torch.rand(1).item() < DROP_PERCENTAGE[input_type]):
                 input_types.remove(input_type)
         drop_me_sign = False
-        if 'hsqc' in input_types and torch.rand(1).item() < self.args.drop_me_sign_percentage:
+        if 'hsqc' in input_types and torch.rand(1).item() < self.args.drop_me_percent:
             drop_me_sign = True
         data_inputs = self.spectral_loader.load(
             data_idx,
@@ -164,8 +175,11 @@ class SPECTREDataModule(pl.LightningDataModule):
             args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
         mods = [m for m in args.input_types if m not in NON_SPECTRAL_INPUTS]
-        self.test_types = [args.input_types] + \
-            [[m] + list(NON_SPECTRAL_INPUTS) for m in mods]
+        self.test_types = [args.input_types] + [[m] for m in mods]
+        if 'hsqc' in args.input_types and 0.0 < args.drop_me_percent < 1.0:
+            self.test_types.append(['normal_hsqc'])
+        if 'hsqc' in args.input_types and args.drop_me_percent == 1.0:
+            self.test_types[self.test_types.index(['hsqc'])] = ['normal_hsqc']
         self._fit_is_setup = False
         self._test_is_setup = False
 

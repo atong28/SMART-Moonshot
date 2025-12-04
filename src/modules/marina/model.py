@@ -156,6 +156,10 @@ class MARINA(pl.LightningModule):
                 parameter.requires_grad = False
         self.ranker = None
         self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+        if 'hsqc' in self.args.input_types and 0.0 < self.args.drop_me_percent < 1.0:
+            self.spectral_types.append('normal_hsqc')
+        if 'hsqc' in self.args.input_types and self.args.drop_me_percent == 1.0:
+            self.spectral_types[self.spectral_types.index('hsqc')] = 'normal_hsqc'
         if self.global_rank == 0:
             logger.info("[MARINA] Initialized")
 
