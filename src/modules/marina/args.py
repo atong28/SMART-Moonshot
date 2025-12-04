@@ -1,7 +1,6 @@
-from typing import Literal, List, Optional
+from typing import List, Dict
 from pydantic.dataclasses import dataclass
 from dataclasses import field
-import tyro
 from ..core import SMARTArgs
 
 
@@ -23,7 +22,9 @@ class MARINAArgs(SMARTArgs):
     mw_is_sign_encoding: List[bool] = field(default_factory=lambda: [False])
     heads: int = 8
     layers: int = 16
-    self_attn_layers: int = 2
+    self_attn_layers: Dict[str, int] = field(default_factory=
+        lambda: {'hsqc': 2, 'h_nmr': 2, 'c_nmr': 2, 'mass_spec': 2, 'mw': 2}
+    )
     ff_dim: int = 3072
     out_dim: int = 16384
 

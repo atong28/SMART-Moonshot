@@ -36,7 +36,7 @@ class SMARTArgs:
     scheduler: Literal['cosine', 'none'] = 'cosine'
     freeze_weights: bool = False
     use_jaccard: bool = False
-    warmup: bool = True
+    warmup: bool = False
     accumulate_grad_batches_num: int = 4
     dropout: float = 0.1
 

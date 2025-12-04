@@ -129,7 +129,7 @@ class MARINA(pl.LightningModule):
                     dim_feedforward=self.ff_dim,
                     batch_first=True, dropout=self.dropout
                 ),
-                num_layers=args.self_attn_layers
+                num_layers=args.self_attn_layers[modality]
             )
             for modality in self.encoders
         })

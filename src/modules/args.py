@@ -47,11 +47,9 @@ def parse_args() -> ArchArgs:
             if hasattr(args, k):
                 setattr(args, k, v)
     
-    # Set debug epochs if needed
-    if getattr(args, "debug", False) and getattr(args, "epochs", None) is None:
+    if getattr(args, "debug", False):
         args.epochs = 1
     
-    # Handle scheduler 'none' -> None conversion
     if hasattr(args, "scheduler") and args.scheduler == "none":
         args.scheduler = None
     
