@@ -105,7 +105,7 @@ class SpectralInputLoader:
                 self._lmdb[mod] = _LMDBModalityStore(path)
 
     # ---- public API ----
-    def load(self, idx, input_types: Iterable[INPUT_TYPES], jittering: float = 0.0) -> Dict[str, torch.Tensor]:
+    def load(self, idx, input_types: Iterable[INPUT_TYPES], jittering: float = 0.0, drop_me_sign: bool = False) -> Dict[str, torch.Tensor]:
         '''
         Load spectral inputs (LMDB-only).
         Returns dict of requested input types and their data.
@@ -113,6 +113,8 @@ class SpectralInputLoader:
         data_inputs = {}
         for input_type in input_types:
             data_inputs.update(getattr(self, f'_load_{input_type}')(idx, jittering))
+        if drop_me_sign and 'hsqc' in input_types:
+            data_inputs['hsqc'][:, 2] = torch.zeros_like(data_inputs['hsqc'][:, 2])
         return data_inputs
 
     # ---- helpers ----

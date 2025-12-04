@@ -111,8 +111,18 @@ class MARINADataset(Dataset):
                   input_type not in self.requires and
                   torch.rand(1).item() < DROP_PERCENTAGE[input_type]):
                 input_types.remove(input_type)
-        return self.spectral_loader.load(data_idx, input_types, jittering=self.jittering), self.mfp_loader.load(data_idx)
-
+        drop_me_sign = False
+        if 'hsqc' in input_types and torch.rand(1).item() < self.args.drop_me_sign_percentage:
+            drop_me_sign = True
+        return (
+            self.spectral_loader.load(
+                data_idx,
+                input_types,
+                jittering=self.jittering,
+                drop_me_sign=drop_me_sign
+            ),
+            self.mfp_loader.load(data_idx)
+        )
 
 class MARINADataModule(pl.LightningDataModule):
     def __init__(self, args: MARINAArgs, fp_loader: FPLoader):

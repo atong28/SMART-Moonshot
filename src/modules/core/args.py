@@ -43,3 +43,5 @@ class SMARTArgs:
     visualize: bool = False
     lambda_hybrid: float = 0.0
     fp_type: Literal['RankingEntropy'] = 'RankingEntropy'
+    
+    drop_me_sign_percentage: float = 0.5

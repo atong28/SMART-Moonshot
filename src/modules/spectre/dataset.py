@@ -118,8 +118,15 @@ class SPECTREDataset(Dataset):
                   input_type not in self.requires and
                   torch.rand(1).item() < DROP_PERCENTAGE[input_type]):
                 input_types.remove(input_type)
+        drop_me_sign = False
+        if 'hsqc' in input_types and torch.rand(1).item() < self.args.drop_me_sign_percentage:
+            drop_me_sign = True
         data_inputs = self.spectral_loader.load(
-            data_idx, input_types, jittering=self.jittering)
+            data_idx,
+            input_types,
+            jittering=self.jittering,
+            drop_me_sign=drop_me_sign
+        )
         mfp = self.mfp_loader.load(data_idx)
 
         inputs, type_indicator = self._pad_and_stack_input(data_inputs)
