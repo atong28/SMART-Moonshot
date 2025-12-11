@@ -1,8 +1,9 @@
-import logging
 from typing import List, Optional, Sequence, Tuple
 
 import torch
 import numpy as np
+
+from ..log import get_logger
 
 
 class FourierFeatures(torch.nn.Module):
@@ -111,7 +112,7 @@ class CoordinateEncoder(torch.nn.Module):
         is_sign_encoding: Optional[Sequence[bool]] = None,
     ):
         super().__init__()
-        self.logger = logging.getLogger("lightning")
+        self.logger = get_logger(__file__)
 
         dim_coords = list(dim_coords)
         self.dim_coords = dim_coords

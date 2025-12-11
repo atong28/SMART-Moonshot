@@ -1,10 +1,10 @@
-import logging
 from typing import Tuple
 
 import torch
 import torch.nn.functional as F
 
 from .utils import set_float32_highest_precision
+from ..log import get_logger
 
 
 @set_float32_highest_precision
@@ -36,8 +36,7 @@ class RankingSet(torch.nn.Module):
             debug : extra logs.
         """
         super().__init__()
-        self.logger = logging.getLogger("lightning")
-        self.logger.setLevel(logging.DEBUG)
+        self.logger = get_logger(__file__)
 
         self.metric = metric.lower()
         self.eps = float(eps)

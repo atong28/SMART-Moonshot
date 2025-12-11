@@ -1,10 +1,8 @@
 import math
-import logging
 from typing import Optional, Tuple
 import pytorch_lightning as pl
 import torch
 import torch.nn as nn
-import torch.distributed as dist
 from torchmetrics import MeanMetric
 import numpy as np
 
@@ -16,13 +14,9 @@ from ..core.metrics import cm
 from ..core.ranker import RankingSet
 from ..core.const import NON_SPECTRAL_INPUTS
 from ..loss import BCECosineHybridLoss
+from ..log import get_logger
 
-logger = logging.getLogger("lightning")
-
-if dist.is_initialized():
-    rank = dist.get_rank()
-    if rank != 0:
-        logger.setLevel(logging.WARNING)
+logger = get_logger(__file__)
 
 
 class SPECTRE(pl.LightningModule):
@@ -229,32 +223,25 @@ class SPECTRE(pl.LightningModule):
             mm.reset()
 
     def on_test_epoch_end(self):
-        print("1")
         keys = list(self._test_mm.keys())
         if not keys:
             return
         input_types = sorted({k.split("__", 1)[1] for k in keys})
         feats = sorted({k.split("__", 1)[0] for k in keys})
-        print("2")
         di = {}
         for feat in feats:
             vals_for_avg = []
             for input_type in input_types:
-                print("3")
                 mm = self._get_metric_mm(
                     self._test_mm, feat, input_type, sync_on_compute=False)
-                print("4")
                 v = mm.compute().item()
                 di[f"test/mean_{feat}/{input_type}"] = v
                 vals_for_avg.append(v)
             di[f"test/mean_{feat}"] = float(np.average(vals_for_avg))
-        print("5")
         for k, v in di.items():
             self.log(k, v, on_epoch=True, on_step=False)
-        print("6")
         for mm in self._test_mm.values():
             mm.reset()
-        print("7")
 
     def configure_optimizers(self):
         if not self.scheduler:

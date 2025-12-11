@@ -1,4 +1,3 @@
-import logging
 import torch
 import pytorch_lightning as pl
 import pytorch_lightning.callbacks as cb
@@ -7,8 +6,10 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from .marina import MARINA, MARINAArgs, MARINADataModule
 from .spectre import SPECTRE, SPECTREArgs
-
+from .log import get_logger
 from .test import test
+
+logger = get_logger(__file__)
 
 
 def train(
@@ -49,7 +50,6 @@ def train(
 
     torch.set_float32_matmul_precision('high')
 
-    logger = logging.getLogger('lightning')
     logger.info(f'[Main] Results Path: {results_path}')
 
     try:

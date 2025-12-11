@@ -3,13 +3,11 @@ import pickle
 import torch
 import traceback
 import sys
-import logging
 from typing import Any, Optional
 
 from itertools import islice
 
 from torch.utils.data import DataLoader, Dataset
-import torch.distributed as dist
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
@@ -20,12 +18,9 @@ from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, DATASET_ROOT, NON_SPECTRAL_
 
 from ..data.fp_loader import FPLoader
 from ..data.inputs import SPECTREInputLoader, MFInputLoader
+from ..log import get_logger
 
-logger = logging.getLogger("lightning")
-if dist.is_initialized():
-    rank = dist.get_rank()
-    if rank != 0:
-        logger.setLevel(logging.WARNING)
+logger = get_logger(__file__)
 
 
 class SPECTREDataset(Dataset):

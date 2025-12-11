@@ -17,9 +17,9 @@ from .modules.util import (
     set_global_seed,
     get_data_paths,
     configure_wandb,
-    get_logger_with_path,
     write_results
 )
+from .modules.log import get_logger, setup_file_logging
 
 from .modules.data.fp_loader import make_fp_loader
 from .modules.core.const import DATASET_ROOT
@@ -64,7 +64,8 @@ def main():
     # create a wandb run
     wandb_run = configure_wandb(args, results_path, today)
 
-    logger = get_logger_with_path(final_path)
+    logger = get_logger(__file__)
+    setup_file_logging(logger, os.path.join(final_path, "logs.txt"))
     # train a model using the args as input
     if args.train:
         train(

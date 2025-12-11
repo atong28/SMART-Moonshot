@@ -36,6 +36,10 @@ def configure_system():
         "ignore",
         message=".*It is recommended to use `self.log\\('test/mean_recall/mass_spec'.*sync_dist=True.*",
     )
+    warnings.filterwarnings(
+        "ignore",
+        message=".*The PyTorch API of nested tensors is in prototype stage and will change in the near future.*",
+    )
 
     os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 

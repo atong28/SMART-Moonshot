@@ -1,5 +1,9 @@
 from typing import Literal, Dict, List, Set
 
+from ..log import get_logger
+
+logger = get_logger(__file__)
+
 INPUT_TYPES = Literal['hsqc', 'h_nmr', 'c_nmr', 'mass_spec', 'mw']
 INPUTS_CANONICAL_ORDER: List[INPUT_TYPES] = ['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']
 
@@ -17,13 +21,13 @@ NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = {'mw'}
 SELF_ATTN_INPUTS: Set[INPUT_TYPES] = {'hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'}
 
 if 'nas-gpu' in __file__:
-    print('Detected yuzu setup')
+    logger.info('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
     DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
     WANDB_API_KEY_FILE = '/data/nas-gpu/wang/atong/SMART-Moonshot/wandb_api_key.json'
     PVC_ROOT = CODE_ROOT
 else:
-    print('Detected nautilus setup')
+    logger.info('Detected nautilus setup')
     CODE_ROOT = '/code'
     DATASET_ROOT = '/workspace'
     WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'

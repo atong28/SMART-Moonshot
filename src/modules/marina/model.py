@@ -1,9 +1,7 @@
 import math
 import torch
-import logging
 import pytorch_lightning as pl
 import torch.nn as nn
-import torch.distributed as dist
 from torchmetrics import MeanMetric
 import numpy as np
 
@@ -17,12 +15,9 @@ from ..data.fp_loader import FPLoader
 from ..data.encoder import build_encoder
 
 from ..loss import BCECosineHybridLoss
+from ..log import get_logger
 
-logger = logging.getLogger("lightning")
-if dist.is_initialized():
-    rank = dist.get_rank()
-    if rank != 0:
-        logger.setLevel(logging.WARNING)
+logger = get_logger(__file__)
 logger_should_sync_dist = torch.cuda.device_count() > 1
 
 

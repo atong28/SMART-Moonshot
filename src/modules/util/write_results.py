@@ -3,7 +3,7 @@ import wandb
 import shutil
 import logging
 
-from .is_main_process import is_main_process
+from ..log import is_main_process
 from ..marina.args import MARINAArgs
 from ..spectre.args import SPECTREArgs
 

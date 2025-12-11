@@ -7,13 +7,13 @@ import pickle
 import argparse
 import json
 from typing import Optional, Dict, List
-import logging
 
 import numpy as np
 import torch
 import lmdb
 
 from ..core.const import DATASET_ROOT
+from ..log import get_logger
 
 from .fp_utils import (
     BitInfo as Feature,            # (bit_id, atom_symbol, frag_smiles, radius)
@@ -259,7 +259,7 @@ class EntropyFPLoader(FPLoader):
         self.hashed_bits_count = counter
 
     def setup(self, out_dim, max_radius, retrieval_path: Optional[str] = None, num_procs: int = 0):
-        logger = logging.getLogger("lightning")
+        logger = get_logger(__file__)
         logger.info("Setting up EntropyFPLoader...")
         start = time.time()
 
@@ -482,7 +482,8 @@ def _cli():
             dataset_root=args.dataset_root, retrieval_path=args.retrieval)
         loader.prepare_from_retrieval(
             radius=args.radius, num_procs=args.num_procs)
-        print(f"Counts written to {loader._counts_path(args.radius)}")
+        logger = get_logger(__file__)
+        logger.info(f"Counts written to {loader._counts_path(args.radius)}")
 
     elif args.cmd == "rankingset":
         out_dim = args.out_dim
@@ -497,16 +498,18 @@ def _cli():
                      retrieval_path=args.retrieval, num_procs=args.num_procs)
         csr = loader.build_rankingset(fp_type=args.fp_type, save=(
             not args.no_save), num_procs=args.num_procs)
-        print(f"CSR shape: {tuple(csr.shape)}")
+        logger = get_logger(__file__)
+        logger.info(f"CSR shape: {tuple(csr.shape)}")
         if not args.no_save:
-            print(
+            logger.info(
                 f"Saved rankingset to {os.path.join(args.dataset_root, args.fp_type, 'rankingset.pt')}")
 
     elif args.cmd == "fragments":
         generate_fragments_for_training(
             index_path=args.index, out_dir=args.out_dir, radius=args.radius, num_procs=args.num_procs
         )
-        print(
+        logger = get_logger(__file__)
+        logger.info(
             f"Fragments written under {os.path.join(args.out_dir, 'Fragments')}")
 
     elif args.cmd == "smiles-fps":
@@ -538,7 +541,8 @@ def _cli():
 
         n_total = len(fp_dict)
         n_none = sum(1 for v in fp_dict.values() if v is None)
-        print(
+        logger = get_logger(__file__)
+        logger.info(
             f"Wrote {n_total} entries to {args.out} ({n_none} parse failures).")
 
 
