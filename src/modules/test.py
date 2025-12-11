@@ -16,8 +16,7 @@ def test(
     model: MARINA | SPECTRE,
     results_path: str,
     ckpt_path: str | None = None,
-    wandb_run=None,
-    sweep=False
+    wandb_run=None
 ) -> dict:
     """
     Run evaluation on a trained MARINA or SPECTRE model.
@@ -91,9 +90,3 @@ def test(
 
     with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
         pickle.dump(test_result, f)
-
-    result = test_result[0] if isinstance(
-        test_result, list) and test_result and isinstance(test_result[0], dict) else {}
-
-    if sweep:
-        return result

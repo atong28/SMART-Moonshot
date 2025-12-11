@@ -26,7 +26,7 @@ def configure_wandb(args: MARINAArgs | SPECTREArgs, results_path: str, today: st
     """
     experiment_id = f"{args.experiment_name}_{today}"
 
-    if is_main_process() and args.train and not args.visualize:
+    if is_main_process() and args.train:
         os.makedirs(results_path, exist_ok=True)
         logger = get_logger_with_path(results_path)
         logger.info("[Main] Parsed args:\n%s", args)

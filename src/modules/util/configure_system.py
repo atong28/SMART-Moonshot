@@ -32,6 +32,10 @@ def configure_system():
         category=UserWarning,
         module="pytorch_lightning.trainer.connectors.logger_connector.result"
     )
+    warnings.filterwarnings(
+        "ignore",
+        message=".*It is recommended to use `self.log\\('test/mean_recall/mass_spec'.*sync_dist=True.*",
+    )
 
     os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 

@@ -23,7 +23,7 @@ class MARINAArgs(SMARTArgs):
     heads: int = 8
     layers: int = 16
     self_attn_layers: Dict[str, int] = field(default_factory=
-        lambda: {'hsqc': 2, 'h_nmr': 2, 'c_nmr': 2, 'mass_spec': 2, 'mw': 2}
+        lambda: {'hsqc': 2, 'h_nmr': 1, 'c_nmr': 2, 'mass_spec': 1, 'mw': 1}
     )
     ff_dim: int = 3072
     out_dim: int = 16384

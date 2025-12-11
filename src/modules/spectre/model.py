@@ -50,8 +50,7 @@ class SPECTRE(pl.LightningModule):
         self.dim_model = args.dim_model
 
         self.use_jaccard = args.use_jaccard
-        self.spectral_types = [
-            m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+        self.spectral_types = ['all_inputs'] + ['_'.join(types) for types in self.args.additional_test_types]
 
         self.ranker = None
         self.freeze_weights = args.freeze_weights
@@ -180,8 +179,7 @@ class SPECTRE(pl.LightningModule):
         loss = self.loss(out, labels)
         metrics, _ = cm(out, labels, self.ranker, loss,
                         self.loss, no_ranking=True)
-        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
-            else self.spectral_types[dataloader_idx - 1]
+        input_type_key = self.spectral_types[dataloader_idx]
         for feat, val in metrics.items():
             mm = self._get_metric_mm(
                 self._val_mm, feat, input_type_key, sync_on_compute=True)
@@ -195,8 +193,7 @@ class SPECTRE(pl.LightningModule):
 
         metrics, _ = cm(out, labels, self.ranker, loss,
                         self.loss, no_ranking=False)
-        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
-            else self.spectral_types[dataloader_idx - 1]
+        input_type_key = self.spectral_types[dataloader_idx]
         for feat, val in metrics.items():
             mm = self._get_metric_mm(
                 self._test_mm, feat, input_type_key, sync_on_compute=False)

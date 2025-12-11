@@ -155,7 +155,7 @@ class MARINA(pl.LightningModule):
             for parameter in self.parameters():
                 parameter.requires_grad = False
         self.ranker = None
-        self.spectral_types = [m for m in self.args.input_types if m not in NON_SPECTRAL_INPUTS]
+        self.spectral_types = ['all_inputs'] + ['_'.join(types) for types in self.args.additional_test_types]
         if self.global_rank == 0:
             logger.info("[MARINA] Initialized")
 
@@ -213,8 +213,7 @@ class MARINA(pl.LightningModule):
             logits, fps, self.ranker, loss, self.loss,
             no_ranking=True
         )
-        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
-            else self.spectral_types[dataloader_idx - 1]
+        input_type_key = self.spectral_types[dataloader_idx]
         for feat, val in metrics.items():
             mm = self._get_metric_mm(self._val_mm, feat, input_type_key)
             mm.update(torch.tensor(
@@ -228,13 +227,12 @@ class MARINA(pl.LightningModule):
             logits, fps, self.ranker, loss, self.loss,
             no_ranking=False
         )
-        input_type_key = "all_inputs" if (dataloader_idx is None or dataloader_idx == 0) \
-            else self.spectral_types[dataloader_idx - 1]
+        input_type_key = self.spectral_types[dataloader_idx]
         for feat, val in metrics.items():
             mm = self._get_metric_mm(
                 self._test_mm, feat, input_type_key, sync_on_compute=False)
             mm.update(torch.tensor(
-                val, device=self.device, dtype=torch.float32))
+                val, device=self.device, dtype=torch.float32))  
 
     def predict_step(self, batch, batch_idx, return_representations=False):
         raise NotImplementedError()
