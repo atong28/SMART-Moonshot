@@ -83,8 +83,7 @@ def main():
             model,
             results_path,
             ckpt_path=args.load_from_checkpoint,
-            wandb_run=wandb_run,
-            sweep=True
+            wandb_run=wandb_run
         )
     else:
         raise ValueError(

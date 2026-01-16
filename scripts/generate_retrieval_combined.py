@@ -1,6 +1,6 @@
 import pickle
 import os
-
+# TODO: Fix the hardcoded paths
 OLD_DATA_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
 NEW_DATA_ROOT = '/data/nas-gpu/wang/atong/CombinedDataset'
 

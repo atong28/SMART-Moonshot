@@ -32,18 +32,19 @@ def configure_wandb(args: MARINAArgs | SPECTREArgs, results_path: str, today: st
         os.makedirs(results_path, exist_ok=True)
         setup_file_logging(logger, os.path.join(results_path, "logs.txt"))
         logger.info("[Main] Parsed args:\n%s", args)
-
+        
         with open(os.path.join(results_path, "params.json"), "w") as fp:
             json.dump(vars(args), fp, indent=2)
 
-        if not os.path.exists(WANDB_API_KEY_FILE):
-            raise RuntimeError(
-                f"WANDB API key file not found at {WANDB_API_KEY_FILE}")
+        if os.path.exists(WANDB_API_KEY_FILE):
+            with open(WANDB_API_KEY_FILE) as kf:
+                key = json.load(kf)["key"]
+            wandb.login(key=key)
 
-        with open(WANDB_API_KEY_FILE) as kf:
-            key = json.load(kf)["key"]
-
-        wandb.login(key=key)
+        elif not os.environ.get("WANDB_API_KEY") is None:
+            wandb.login()
+        else:
+            raise RuntimeError(f"WANDB API key file not found at {WANDB_API_KEY_FILE}, and WANDB_API_KEY env var not set.")
 
         wandb_run = wandb.init(
             project=args.project_name,

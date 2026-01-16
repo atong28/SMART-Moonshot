@@ -25,6 +25,7 @@ import numpy as np
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from src.marina.data.fp_utils import count_circular_substructures, BitInfo
 
+# TODO: Fix the hardcoded paths
 DATASET_ROOT = "/data/nas-gpu/wang/atong/NMRMindDataset"
 SPLITS = ("train", "val", "test")
 

@@ -6,7 +6,7 @@ from rdkit import Chem
 from rdkit.Chem import rdMolDescriptors
 from tqdm import tqdm
 import torch
-
+#  TODO: Fix the hardcoded paths
 DATASET_ROOT = '/data/nas-gpu/wang/atong/NMRMindDataset'
 
 SPECTRA_TYPES = [
