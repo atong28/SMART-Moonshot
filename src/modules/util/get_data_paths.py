@@ -24,7 +24,7 @@ def get_data_paths(args: MARINAArgs | SPECTREArgs, today: str) -> Tuple[str, str
     )
 
     final_path = os.path.join(
-        PVC_ROOT,
+        f"{PVC_ROOT}/Moonshot",
         "results",
         args.experiment_name,
         today
