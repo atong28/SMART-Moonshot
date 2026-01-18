@@ -1,6 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-zip_dir="${1:-MoonshotDatasetv3.zip}"
+: "${DATA_ZIP_DIR:?DATA_ZIP_DIR is not set}"
+: "${DATA_DIR:?DATA_DIR is not set}"
 
-unzip -q "$DATA_ZIP_DIR/$zip_dir" -d "$DATA_DIR"
+ZIP_PATH="$DATA_ZIP_DIR/$1"
+
+echo "[unzip] zip=$ZIP_PATH"
+echo "[unzip] dest=$DATA_DIR"
+
+ls -lh "$ZIP_PATH"
+
+unzip -q "$ZIP_PATH" -d "$DATA_DIR"
+
+echo "[unzip] done"
