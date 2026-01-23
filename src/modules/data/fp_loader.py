@@ -297,6 +297,40 @@ class EntropyFPLoader(FPLoader):
         topk_idx = np.argpartition(-ent, kth=min(k, len(ent)-1))[:k]
         topk_sorted = sorted(topk_idx, key=lambda i: (-ent[i], bitinfos[i]))
 
+        # Print top 5 and bottom 5 structures by entropy
+        logger.info("=" * 80)
+        logger.info("Top 5 structures with highest entropy:")
+        logger.info("-" * 80)
+        for rank, idx in enumerate(topk_sorted[:20], 1):
+            bit_id, atom_symbol, frag_smiles, radius = bitinfos[idx]
+            entropy_val = ent[idx]
+            logger.info(
+                f"  {rank}. Entropy: {entropy_val:.6f} | "
+                f"Hash: {bit_id} | "
+                f"Center Atom: {atom_symbol} | "
+                f"Substructure: {frag_smiles} | "
+                f"Radius: {radius}"
+            )
+        
+        logger.info("-" * 80)
+        logger.info("Top 5 structures with lowest entropy:")
+        logger.info("-" * 80)
+        # Find bottom 5 from all filtered features
+        all_indices = np.arange(len(ent))
+        bottom5_idx = np.argpartition(ent, kth=min(4, len(ent)-1))[:20]
+        bottom5_sorted = sorted(bottom5_idx, key=lambda i: (ent[i], bitinfos[i]))
+        for rank, idx in enumerate(bottom5_sorted, 1):
+            bit_id, atom_symbol, frag_smiles, radius = bitinfos[idx]
+            entropy_val = ent[idx]
+            logger.info(
+                f"  {rank}. Entropy: {entropy_val:.6f} | "
+                f"Hash: {bit_id} | "
+                f"Center Atom: {atom_symbol} | "
+                f"Substructure: {frag_smiles} | "
+                f"Radius: {radius}"
+            )
+        logger.info("=" * 80)
+
         self.out_dim = len(topk_sorted)
         self.bitinfo_to_fp_index_map = {
             bitinfos[i]: j for j, i in enumerate(topk_sorted)}
