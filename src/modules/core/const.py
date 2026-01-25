@@ -1,3 +1,4 @@
+import os
 from typing import Literal, Dict, List, Set
 
 from ..log import get_logger
@@ -28,10 +29,9 @@ if 'nas-gpu' in __file__:
     PVC_ROOT = CODE_ROOT
 else:
     logger.info('Detected nautilus setup')
-    CODE_ROOT = '/code'
-    DATASET_ROOT = '/workspace'
-    WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
-    PVC_ROOT = '/root/gurusmart/Moonshot'
+    CODE_ROOT = os.environ.get('WORKSPACE_DIR', '/workspace')
+    DATASET_ROOT = os.environ.get('DATA_DIR', '/data')
+    PVC_ROOT = os.environ.get('CHECKPOINT_DIR','/root/gurusmart/Moonshot')
 
 DO_NOT_OVERRIDE = [
     'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires', 'train_lora',

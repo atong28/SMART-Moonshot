@@ -6,6 +6,7 @@ import csv
 import pickle
 csv.field_size_limit(10485760)
 
+# TODO: Fix the hardcoded paths
 LOTUS_PATH = '/data/nas-gpu/wang/atong/LotusDataset/NPOC2021/NPOC2021'
 COCONUT_PATH = '/data/nas-gpu/wang/atong/CoconutDataset'
 NPMRD_PATH = '/data/nas-gpu/wang/atong/NPMRDDataset'

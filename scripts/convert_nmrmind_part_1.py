@@ -33,7 +33,7 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 # Dataset / modality constants
 # ---------------------------------------------------------------------------
-
+# TODO: Fix the hardcoded paths
 DATASET_ROOT = "/data/nas-gpu/wang/atong/NMRMindDataset"
 
 SPLITS = ("train", "val", "test")

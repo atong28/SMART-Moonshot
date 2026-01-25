@@ -18,6 +18,7 @@ def zip_directory_contents(directory: str, output_zip: str):
                 relative_path = os.path.relpath(full_path, directory)  # relative to directory contents
                 zipf.write(full_path, arcname=relative_path)
 
+#  TODO: Fix the hardcoded paths
 ORIGIN_PATH = '/root/gurusmart/entropy_of_hashes_DB_updated.zip'
 CHECKPOINT_PATH = '/root/gurusmart/RefactorCheckpoint.zip'
 OLD_DATA_ROOT = '/workspace/OldDataset'
@@ -156,6 +157,7 @@ try:
     if os.path.exists(os.path.join(NEW_DATA_ROOT, 'resume.pkl')):
         os.remove(os.path.join(NEW_DATA_ROOT, 'resume.pkl'))
     shutil.copy2(os.path.join(OLD_DATA_ROOT, 'count_hashes_under_radius_10.pkl'), os.path.join(NEW_DATA_ROOT, 'count_hashes_under_radius_10.pkl'))
+    # TODO: Fix the hardcoded paths
     zip_directory_contents(NEW_DATA_ROOT, '/root/gurusmart/MoonshotDataset_v0.1.zip')
     if os.path.exists(CHECKPOINT_PATH):
         os.remove(CHECKPOINT_PATH)
@@ -171,4 +173,5 @@ except (KeyboardInterrupt, Exception):
         'split_subset_idx': subset_idx
     }
     pickle.dump(resume_data, open(os.path.join(NEW_DATA_ROOT, 'resume.pkl'), 'wb'))
+    # TODO: Fix the hardcoded paths
     zip_directory_contents(OLD_DATA_ROOT, '/root/gurusmart/RefactorCheckpoint.zip')

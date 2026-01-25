@@ -19,7 +19,7 @@ def get_np_classes(smiles):
         print(smiles)
         print(response.content)
         return None, None, None
-
+# TODO: fix the hardcoded paths
 index = pickle.load(open('/data/nas-gpu/wang/atong/MoonshotDataset/index.pkl', 'rb'))
 
 for idx in tqdm(index):
@@ -31,5 +31,5 @@ for idx in tqdm(index):
     index[idx]['np_pathway'] = pathway_results
     index[idx]['np_superclass'] = superclass_results
     index[idx]['np_class'] = class_results
-
+# TODO: fix the hardcoded paths
 pickle.dump(index, open('/data/nas-gpu/wang/atong/MoonshotDataset/index.pkl', 'wb'))

@@ -1,7 +1,9 @@
 import pickle
 import os
 
-DATA_ROOT = '/workspace'
+#  TODO: Fix the hardcoded paths
+DATA_ROOT = os.environ.get('DATA_DIR', '/data')
+
 ms_data = set(os.listdir(f'{DATA_ROOT}/MassSpec'))
 id_data = set(os.listdir(f'{DATA_ROOT}/IsoDist'))
 hsqc_data = set(os.listdir(f'{DATA_ROOT}/HSQC_NMR'))

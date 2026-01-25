@@ -33,7 +33,7 @@ from tqdm import tqdm
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
-
+# TODO: Fix the hardcoded paths
 DATASET_ROOT = "/data/nas-gpu/wang/atong/CombinedDataset"
 SPLITS = ("train", "val", "test")
 TRAIN_FILES = ["train0.json", "train1.json", "train2.json", "train3.json", "train4.json"]
