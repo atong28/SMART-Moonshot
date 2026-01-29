@@ -1,4 +1,5 @@
 from typing import Literal, Dict, List, Set
+from pathlib import Path
 
 from ..log import get_logger
 
@@ -26,12 +27,20 @@ if 'nas-gpu' in __file__:
     DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
     WANDB_API_KEY_FILE = '/data/nas-gpu/wang/atong/SMART-Moonshot/wandb_api_key.json'
     PVC_ROOT = CODE_ROOT
-else:
+elif '/code' in __file__:
     logger.info('Detected nautilus setup')
     CODE_ROOT = '/code'
     DATASET_ROOT = '/workspace'
     WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
     PVC_ROOT = '/root/gurusmart/Moonshot'
+elif 'backend/src/marina' in __file__:
+    logger.info('Detected website setup')
+    CODE_ROOT = None
+    DATASET_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / 'data'
+    WANDB_API_KEY_FILE = None
+    PVC_ROOT = None
+else:
+    raise ValueError('Unknown setup')
 
 DO_NOT_OVERRIDE = [
     'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires', 'train_lora',
