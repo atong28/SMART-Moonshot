@@ -1,8 +1,6 @@
 from typing import Literal, Dict, List, Set
 from pathlib import Path
 
-from sympy import elliptic_f
-
 from ..log import get_logger
 
 logger = get_logger(__file__)
@@ -22,7 +20,7 @@ DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
 
 NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = {'mw'}
 SELF_ATTN_INPUTS: Set[INPUT_TYPES] = {'hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'}
-if 'backend/src/marina' in __file__:
+if 'src/marina/src/modules' in __file__:
     logger.info('Detected website setup')
     CODE_ROOT = None
     DATASET_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / 'data'
