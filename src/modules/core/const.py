@@ -1,6 +1,8 @@
 from typing import Literal, Dict, List, Set
 from pathlib import Path
 
+from sympy import elliptic_f
+
 from ..log import get_logger
 
 logger = get_logger(__file__)
@@ -20,8 +22,13 @@ DROP_PERCENTAGE: Dict[INPUT_TYPES, float] = {
 
 NON_SPECTRAL_INPUTS: Set[INPUT_TYPES] = {'mw'}
 SELF_ATTN_INPUTS: Set[INPUT_TYPES] = {'hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw'}
-
-if 'nas-gpu' in __file__:
+if 'backend/src/marina' in __file__:
+    logger.info('Detected website setup')
+    CODE_ROOT = None
+    DATASET_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / 'data'
+    WANDB_API_KEY_FILE = None
+    PVC_ROOT = None
+elif 'nas-gpu' in __file__:
     logger.info('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
     DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
@@ -33,12 +40,6 @@ elif '/code' in __file__:
     DATASET_ROOT = '/workspace'
     WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
     PVC_ROOT = '/root/gurusmart/Moonshot'
-elif 'backend/src/marina' in __file__:
-    logger.info('Detected website setup')
-    CODE_ROOT = None
-    DATASET_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / 'data'
-    WANDB_API_KEY_FILE = None
-    PVC_ROOT = None
 else:
     raise ValueError('Unknown setup')
 
