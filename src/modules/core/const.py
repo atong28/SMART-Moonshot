@@ -26,18 +26,21 @@ if 'src/marina/src/modules' in __file__:
     DATASET_ROOT = Path(__file__).resolve().parent.parent.parent.parent.parent.parent / 'data'
     WANDB_API_KEY_FILE = None
     PVC_ROOT = None
+    BENCHMARK_ROOT = None
 elif 'nas-gpu' in __file__:
     logger.info('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
-    DATASET_ROOT = '/data/nas-gpu/wang/atong/MoonshotDatasetv3'
+    DATASET_ROOT = '/data/nas-gpu/wang/atong/Datasets/MoonshotDatasetv3'
     WANDB_API_KEY_FILE = '/data/nas-gpu/wang/atong/SMART-Moonshot/wandb_api_key.json'
     PVC_ROOT = CODE_ROOT
+    BENCHMARK_ROOT = '/data/nas-gpu/wang/atong/Datasets/Benchmark'
 elif '/code' in __file__:
     logger.info('Detected nautilus setup')
     CODE_ROOT = '/code'
     DATASET_ROOT = '/workspace'
     WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
     PVC_ROOT = '/root/gurusmart/Moonshot'
+    BENCHMARK_ROOT = None
 else:
     raise ValueError('Unknown setup')
 

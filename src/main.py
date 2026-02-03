@@ -1,6 +1,6 @@
 import os
-
 from datetime import datetime
+import torch
 
 from .modules import (
     MARINA,
@@ -11,7 +11,8 @@ from .modules import (
     SPECTREDataModule,
     parse_args,
     train,
-    test
+    test,
+    benchmark
 )
 from .modules.util import (
     set_global_seed,
@@ -85,6 +86,13 @@ def main():
             ckpt_path=args.load_from_checkpoint,
             wandb_run=wandb_run,
             sweep=True
+        )
+    elif args.benchmark:
+        benchmark(
+            args,
+            data_module,
+            model,
+            fp_loader
         )
     else:
         raise ValueError(

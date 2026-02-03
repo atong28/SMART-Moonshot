@@ -223,7 +223,6 @@ class MARINADataModule(pl.LightningDataModule):
         """
         dicts, fps = zip(*batch)
         batch_inputs = {}
-
         for mod in INPUTS_CANONICAL_ORDER:
             seqs = [d.get(mod) for d in dicts]
             if all(x is None for x in seqs):
@@ -239,3 +238,24 @@ class MARINADataModule(pl.LightningDataModule):
 
         batch_fps = torch.stack(fps, dim=0)
         return batch_inputs, batch_fps
+
+    def format_inference_data(self, data: dict[int, Any]) -> dict[str, Any]:
+        '''
+        Return collated data for inference.
+        
+        data: stores same thing as input_loader would give:
+        {
+            'hsqc': ..., # shape: (N, 3)
+            'c_nmr': ..., # shape: (N, 1)
+            'h_nmr': ..., # shape: (N, 1)
+            'mw': ... # shape: (1,)
+        }
+        
+        Usage: 
+        >>> inputs = data_module.format_inference_data(data)
+        >>> output = model(**inputs)
+        '''
+        if 'mw' in data:
+            data['mw'] = torch.tensor(data['mw']).view(1, 1)
+        batch_inputs, _ = self._collate_fn([(data, torch.tensor([0.0]))])
+        return {'batch': batch_inputs}

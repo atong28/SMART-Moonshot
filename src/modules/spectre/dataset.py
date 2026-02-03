@@ -6,7 +6,7 @@ import sys
 from typing import Any, Optional
 
 from itertools import islice
-
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
@@ -217,3 +217,34 @@ class SPECTREDataModule(pl.LightningDataModule):
         fp = torch.stack(items[1])
         type_indicator = pad_sequence([v for v in items[2]], batch_first=True)
         return inputs, fp, type_indicator
+    
+    def format_inference_data(self, data: dict[int, Any]) -> dict[str, Any]:
+        '''
+        Return collated data for inference.
+        
+        data: stores same thing as input_loader would give:
+        {
+            'hsqc': ..., # shape: (N, 3)
+            'c_nmr': ..., # shape: (N, 1)
+            'h_nmr': ..., # shape: (N, 1)
+            'mw': ... # shape: (1,)
+        }
+        
+        Usage: 
+        >>> inputs = data_module.format_inference_data(data)
+        >>> output = model(**inputs)
+        '''
+        if not self._test_is_setup:
+            self.setup(stage='test')
+        if 'mw' in data:
+            data['mw'] = torch.tensor(data['mw'])
+        if 'c_nmr' in data:
+            data['c_nmr'] = F.pad(data['c_nmr'].view(-1, 1), (0, 2), "constant", 0)
+        if 'h_nmr' in data:
+            data['h_nmr'] = F.pad(data['h_nmr'].view(-1, 1), (1, 1), "constant", 0)
+        if 'mass_spec' in data:
+            data['mass_spec'] = F.pad(data['mass_spec'].view(-1, 1), (0, 1), "constant", 0)
+        inputs, type_indicators = self.test[0]._pad_and_stack_input(data)
+        inputs, _, type_indicators = self._collate_fn([(inputs, torch.tensor([0.0]), type_indicators)])
+        return {'inputs': inputs, 'type_indicator': type_indicators}
+        

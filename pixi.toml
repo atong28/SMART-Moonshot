@@ -10,6 +10,8 @@ version = "0.1.0"
 "train.spectre" = { cmd = "torchrun --nproc_per_node=4 --module src.main spectre" }
 "debug.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main marina --debug " }
 "debug.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main spectre --debug " }
+"benchmark.marina" = { cmd = "python -m src.main marina --no_train --no_test --benchmark --load_from_checkpoint checkpoints/marina_best/best.ckpt" }
+"benchmark.spectre" = { cmd = "python -m src.main spectre --no_train --no_test --benchmark --load_from_checkpoint checkpoints/spectre_best/best.ckpt" }
 
 "kube.get_pods" = { cmd = "kubectl get pods" }
 "kube.start_pod" = { cmd = "kubectl create -f nautilus/pods/devel.yaml" }
@@ -28,6 +30,8 @@ jupyter = ">=1.1.1,<2"
 ipykernel = ">=6.30.1,<7"
 python-lmdb = ">=1.7.5,<2"
 tyro = ">=0.9.35,<0.10"
+gdown = ">=5.2.1,<6"
+openpyxl = ">=3.1.5,<4"
 
 [pypi-dependencies]
 torch = { version = "==2.7.1", index = "https://download.pytorch.org/whl/cu128" }
