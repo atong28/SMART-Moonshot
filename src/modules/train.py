@@ -6,7 +6,7 @@ from pytorch_lightning.callbacks.early_stopping import EarlyStopping
 
 from .marina import MARINA, MARINAArgs, MARINADataModule
 from .spectre import SPECTRE, SPECTREArgs
-from .log import get_logger
+from .log import get_logger, ErrorLoggingCallback
 from .test import test
 
 logger = get_logger(__file__)
@@ -77,12 +77,13 @@ def train(
     )
 
     lr_monitor = cb.LearningRateMonitor(logging_interval="step")
+    error_callback = ErrorLoggingCallback()
 
     trainer = pl.Trainer(
         max_epochs=args.epochs,
         accelerator="auto",
         logger=wandb_logger,
-        callbacks=[early_stopping, lr_monitor, ckpt_callback],
+        callbacks=[early_stopping, lr_monitor, ckpt_callback, error_callback],
         accumulate_grad_batches=args.accumulate_grad_batches_num,
         strategy='ddp',
         gradient_clip_val=1.0
