@@ -124,7 +124,8 @@ class MARINA(pl.LightningModule):
                     dim_feedforward=self.ff_dim,
                     batch_first=True, dropout=self.dropout
                 ),
-                num_layers=args.self_attn_layers[modality]
+                num_layers=args.self_attn_layers[modality],
+                enable_nested_tensor=False
             )
             for modality in self.encoders
         })
