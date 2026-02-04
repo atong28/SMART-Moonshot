@@ -78,18 +78,21 @@ def benchmark(args: MARINAArgs | SPECTREArgs, data_module: MARINADataModule | SP
         mfp = get_mfp(entry['smiles'])
         gt_retrieval_idx = meta_smi_to_idx.get(entry['smiles'], None)
         retrievals = {}
+        near_identical_matches = []
         for idx_k in range(10):
             retrieval_idx = idxs[idx_k]
             retrieval_sfp = model.ranker.data[retrieval_idx].to_dense().float()
             retrieval_mfp = get_mfp(metadata[str(retrieval_idx)]['canonical_2d_smiles'])
+            cos_sim_sfp = cos_sim(sfp, retrieval_sfp)
+            near_identical_matches.append(cos_sim_sfp > 0.99)
             retrievals[idx_k] = {
                 'retrieval_idx': retrieval_idx,
                 'retrieval_sfp': retrieval_sfp,
                 'retrieval_mfp': get_mfp(metadata[str(retrieval_idx)]['canonical_2d_smiles']),
-                'cosine_sim_sfp': cos_sim(sfp, retrieval_sfp),
+                'cosine_sim_sfp': cos_sim_sfp,
                 'tani_sim_sfp': tanimoto_sim(sfp, retrieval_sfp),
                 'cosine_sim_mfp': cos_sim(mfp, retrieval_mfp),
-                'tani_sim_mfp': tanimoto_sim(mfp, retrieval_mfp),
+                'tani_sim_mfp': tanimoto_sim(mfp, retrieval_mfp)
             }
         benchmark_data[idx]['predictions'] = {
             'pred_sfp': pred / torch.norm(pred),
@@ -98,16 +101,12 @@ def benchmark(args: MARINAArgs | SPECTREArgs, data_module: MARINADataModule | SP
             'cosine_sim': cos_sim(pred, sfp),
             'retrievals': retrievals,
             'retrieval_idx': gt_retrieval_idx,
-            'dereplication_top1': (True if gt_retrieval_idx in idxs[:1] else False) if gt_retrieval_idx is not None else None,
-            'dereplication_top5': (True if gt_retrieval_idx in idxs[:5] else False) if gt_retrieval_idx is not None else None,
-            'dereplication_top10': (True if gt_retrieval_idx in idxs[:10] else False) if gt_retrieval_idx is not None else None,
+            'dereplication_topk': {k: any(near_identical_matches[:k]) for k in range(1, 11)}
         }
-    pickle.dump(benchmark_data, open(os.path.join(BENCHMARK_ROOT, "benchmark_results.pkl"), 'wb'))
+    pickle.dump(benchmark_data, open(os.path.join(BENCHMARK_ROOT, f"{args.project_name}_benchmark_results.pkl"), 'wb'))
     logger.info(f'[Benchmark] Benchmarking completed')
     logger.info(f'[Benchmark] Average cosine similarity: {torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).item()}')
-    dereplication_top1 = [entry["predictions"]["dereplication_top1"] for entry in benchmark_data.values() if entry["predictions"]["dereplication_top1"] is not None]
-    dereplication_top5 = [entry["predictions"]["dereplication_top5"] for entry in benchmark_data.values() if entry["predictions"]["dereplication_top5"] is not None]
-    dereplication_top10 = [entry["predictions"]["dereplication_top10"] for entry in benchmark_data.values() if entry["predictions"]["dereplication_top10"] is not None]
-    logger.info(f'[Benchmark] Average dereplication top1: {sum(dereplication_top1)} out of {len(dereplication_top1)} available ({sum(dereplication_top1) / len(dereplication_top1) * 100:.2f}%)')
-    logger.info(f'[Benchmark] Average dereplication top5: {sum(dereplication_top5)} out of {len(dereplication_top5)} available ({sum(dereplication_top5) / len(dereplication_top5) * 100:.2f}%)')
-    logger.info(f'[Benchmark] Average dereplication top10: {sum(dereplication_top10)} out of {len(dereplication_top10)} available ({sum(dereplication_top10) / len(dereplication_top10) * 100:.2f}%)')
+    dereplication_topk = {k: [entry["predictions"]["dereplication_topk"][k] for entry in benchmark_data.values() if entry["predictions"]["dereplication_topk"][k] is not None] for k in range(1, 11)}
+    logger.info(f'[Benchmark] Average dereplication top1: {sum(dereplication_topk[1])} out of {len(dereplication_topk[1])} available ({sum(dereplication_topk[1]) / len(dereplication_topk[1]) * 100:.2f}%)')
+    logger.info(f'[Benchmark] Average dereplication top5: {sum(dereplication_topk[5])} out of {len(dereplication_topk[5])} available ({sum(dereplication_topk[5]) / len(dereplication_topk[5]) * 100:.2f}%)')
+    logger.info(f'[Benchmark] Average dereplication top10: {sum(dereplication_topk[10])} out of {len(dereplication_topk[10])} available ({sum(dereplication_topk[10]) / len(dereplication_topk[10]) * 100:.2f}%)')
