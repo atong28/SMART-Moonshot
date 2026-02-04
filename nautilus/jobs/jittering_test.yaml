@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: atong-marina-run-no-warmup-training-5 
+  name: atong-marina-jittering-test-jittering-2-0-seed-2 
   labels:
     owner: atong
 spec:
@@ -27,6 +27,8 @@ spec:
                     operator: NotIn
                     values:
                     - hcc-nrp-shor-c5805.unl.edu
+                    - gpu-09.nrp.mghpcc.org
+                    - hcc-nrp-shor-c6017.unl.edu
       containers:
         - name: demo
           image: gitlab-registry.nrp-nautilus.io/a8tong/smart-moonshot/pixi-cuda:12.8.1
@@ -35,11 +37,9 @@ spec:
             - "-c"
             - >-
               set -euxo pipefail &&
-              nvidia-smi -L &&
               bash /root/gurusmart/startup.sh MoonshotDatasetv3.zip &&
               cd /code &&
-              pixi run --manifest-path pixi.toml -- torchrun --nproc_per_node=4 stage1.py --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-run-no-warmup-training-5 --no_warmup 
-              
+              pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 2 --experiment_name marina-jittering-test-jittering-2-0-seed-2 --jittering 2.0 
           volumeMounts:
             - mountPath: "/root/gurusmart"
               name: atong-spectre
@@ -51,12 +51,12 @@ spec:
               name: code-workdir
           resources:
             limits:
-              memory: 160Gi
+              memory: 100Gi
               cpu: "18"
               ephemeral-storage: 600Gi
               nvidia.com/gpu: "4"
             requests:
-              memory: 160Gi
+              memory: 100Gi
               cpu: "18"
               ephemeral-storage: 600Gi
               nvidia.com/gpu: "4"
@@ -77,4 +77,4 @@ spec:
         runAsUser: 0
         runAsGroup: 0
         fsGroup: 0
-  backoffLimit: 1
+  backoffLimit: 0

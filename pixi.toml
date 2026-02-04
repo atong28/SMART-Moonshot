@@ -12,6 +12,7 @@ version = "0.1.0"
 "debug.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main spectre --debug " }
 "benchmark.marina" = { cmd = "python -m src.main marina --no_train --no_test --benchmark --load_from_checkpoint checkpoints/marina_best/best.ckpt" }
 "benchmark.spectre" = { cmd = "python -m src.main spectre --no_train --no_test --benchmark --load_from_checkpoint checkpoints/spectre_best/best.ckpt" }
+"deploy" = { cmd = "bash nautilus/scripts/deploy.sh" }
 
 "kube.get_pods" = { cmd = "kubectl get pods" }
 "kube.start_pod" = { cmd = "kubectl create -f nautilus/pods/devel.yaml" }
