@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: atong-marina-jittering-test-jittering-0-0-seed-0 
+  name: atong-marina-jittering-test-jittering-1-5-seed-0 
   labels:
     owner: atong
 spec:
@@ -39,7 +39,7 @@ spec:
               set -euxo pipefail &&
               bash /root/gurusmart/startup.sh MoonshotDatasetv3.zip &&
               cd /code &&
-              pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-jittering-test-jittering-0-0-seed-0 --jittering 0.0 
+              pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-jittering-test-jittering-1-5-seed-0 --jittering 1.5 
           volumeMounts:
             - mountPath: "/root/gurusmart"
               name: atong-spectre

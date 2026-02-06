@@ -40,16 +40,13 @@ elif '/code' in __file__:
     DATASET_ROOT = '/workspace'
     WANDB_API_KEY_FILE = '/root/gurusmart/Moonshot/wandb_api_key.json'
     PVC_ROOT = '/root/gurusmart/Moonshot'
-    BENCHMARK_ROOT = None
+    BENCHMARK_ROOT = '/root/gurusmart/Benchmark'
 else:
     raise ValueError('Unknown setup')
 
 DO_NOT_OVERRIDE = [
-    'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires', 'train_lora',
-    'lora_rank_qkv', 'lora_rank_out', 'lora_rank_fc', 'lora_scale_qkv', 'lora_scale_out',
-    'lora_scale_fc', 'lora_enable_attn', 'lora_enable_fc', 'adapter_dir', 'train_adapter_for_combo',
-    'lora_only', 'lora_lr', 'lora_weight_decay', 'full_mix_ratio', 'distill_full_alpha',
-    'distill_target'
+    'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires',
+    'benchmark', 'restrictions'
 ]
 
 HSQC_TYPE = 0

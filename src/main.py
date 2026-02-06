@@ -93,9 +93,9 @@ def main():
                 data_module,
                 model,
                 results_path,
-                wandb_run=wandb_run
+                wandb_run=wandb_run,
+                fp_loader=fp_loader
             )
-        # test a given run against a set
         elif args.test:
             test(
                 args,
@@ -104,18 +104,19 @@ def main():
                 results_path,
                 ckpt_path=args.load_from_checkpoint,
                 wandb_run=wandb_run,
-                sweep=True
+                fp_loader=fp_loader
             )
         elif args.benchmark:
             benchmark(
                 args,
                 data_module,
                 model,
-                fp_loader
+                fp_loader,
+                wandb_run=wandb_run,
+                load_from_checkpoint=args.load_from_checkpoint
             )
         else:
-            raise ValueError(
-                "[Main] Both --no_train and --no_test set; nothing to do!")
+            raise ValueError("[Main] Nothing to do!")
 
         # if it was a training run write out the results to a path and end the wandb run
         write_results(args, final_path, results_path, logger, wandb_run)

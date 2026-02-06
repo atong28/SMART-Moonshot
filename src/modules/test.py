@@ -8,6 +8,8 @@ import pytorch_lightning as pl
 
 from .marina import MARINA, MARINAArgs, MARINADataModule
 from .spectre import SPECTRE, SPECTREArgs
+from .benchmark import benchmark
+from .data.fp_loader import EntropyFPLoader
 
 
 def test(
@@ -16,7 +18,8 @@ def test(
     model: MARINA | SPECTRE,
     results_path: str,
     ckpt_path: str | None = None,
-    wandb_run=None
+    wandb_run=None,
+    fp_loader: EntropyFPLoader | None = None
 ) -> dict:
     """
     Run evaluation on a trained MARINA or SPECTRE model.
@@ -90,3 +93,6 @@ def test(
 
     with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
         pickle.dump(test_result, f)
+        
+    if args.benchmark:
+        benchmark(args, data_module, model, fp_loader, wandb_run=wandb_run)

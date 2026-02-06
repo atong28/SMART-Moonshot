@@ -3,7 +3,7 @@ ROOT_DIR=/data/nas-gpu/wang/atong/SMART-Moonshot/nautilus
 experiment="marina-jittering-test"
 input_types="{hsqc,c_nmr,h_nmr,mw,mass_spec}"
 
-for jittering in 0.0; do
+for jittering in 1.5; do
   for seed in 0; do
     jittering_safe=$(echo ${jittering} | sed 's/\./-/g')
     experiment_name="${experiment}-jittering-${jittering_safe}-seed-${seed}"

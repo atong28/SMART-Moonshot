@@ -16,7 +16,7 @@ class SMARTArgs:
     # whether to do testing
     test: bool = True
     # whether to do benchmarking
-    benchmark: bool = False
+    benchmark: bool = True
     # restrictions on the input types to be used for benchmarking
     restrictions: Optional[List[Literal['hsqc', 'c_nmr', 'h_nmr', 'mass_spec', 'mw']]] = None
 

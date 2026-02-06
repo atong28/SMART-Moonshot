@@ -8,6 +8,7 @@ from .marina import MARINA, MARINAArgs, MARINADataModule
 from .spectre import SPECTRE, SPECTREArgs
 from .log import get_logger, ErrorLoggingCallback
 from .test import test
+from .data.fp_loader import EntropyFPLoader
 
 logger = get_logger(__file__)
 
@@ -17,7 +18,8 @@ def train(
     data_module: MARINADataModule,
     model: MARINA | SPECTRE,
     results_path: str,
-    wandb_run=None
+    wandb_run=None,
+    fp_loader: EntropyFPLoader | None = None
 ) -> None:
     """
     Train a MARINA or SPECTRE model using PyTorch Lightning.
@@ -96,4 +98,4 @@ def train(
     trainer.strategy.barrier()
 
     if args.test and trainer.local_rank == 0:
-        test(args, data_module, model, results_path, None)
+        test(args, data_module, model, results_path, None, wandb_run=wandb_run, fp_loader=fp_loader)

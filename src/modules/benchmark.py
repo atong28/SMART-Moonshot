@@ -7,6 +7,10 @@ import json
 from collections import OrderedDict
 from tqdm import tqdm
 from rdkit import Chem
+
+from wandb.sdk.wandb_run import Run
+import wandb
+
 from rdkit.Chem.rdFingerprintGenerator import GetMorganGenerator
 from rdkit.DataStructs import ConvertToNumpyArray
 from .marina import MARINAArgs,MARINADataModule, MARINA
@@ -14,6 +18,7 @@ from .spectre import SPECTREArgs, SPECTREDataModule, SPECTRE
 from .log import get_logger
 from .core.const import BENCHMARK_ROOT, DATASET_ROOT, INPUT_TYPES
 from .data.fp_loader import EntropyFPLoader
+
 
 _gen = GetMorganGenerator(radius=2, fpSize=2048)
 
@@ -55,12 +60,20 @@ def load_model(args: MARINAArgs | SPECTREArgs, model: MARINA | SPECTRE) -> None:
 def filter_data(data: dict[int, Any], restrictions: List[INPUT_TYPES]) -> dict[int, Any]:
     return {k: v for k, v in data.items() if k in restrictions}
 
-def benchmark(args: MARINAArgs | SPECTREArgs, data_module: MARINADataModule | SPECTREDataModule, model: MARINA | SPECTRE, fp_loader: EntropyFPLoader) -> None:
+def benchmark(
+    args: MARINAArgs | SPECTREArgs,
+    data_module: MARINADataModule | SPECTREDataModule,
+    model: MARINA | SPECTRE,
+    fp_loader: EntropyFPLoader,
+    wandb_run: Run | None = None,
+    load_from_checkpoint: str | None = None,
+) -> None:
     """
     Benchmark a MARINA or SPECTRE model.
     """
     restrictions = args.input_types if args.restrictions is None else args.restrictions
-    load_model(args, model)
+    if load_from_checkpoint is not None:
+        load_model(args, model, load_from_checkpoint)
     if BENCHMARK_ROOT is None:
         raise ValueError('Benchmarking is not supported on this setup')
     logger = get_logger(__file__)
@@ -103,10 +116,23 @@ def benchmark(args: MARINAArgs | SPECTREArgs, data_module: MARINADataModule | SP
             'retrieval_idx': gt_retrieval_idx,
             'dereplication_topk': {k: any(near_identical_matches[:k]) for k in range(1, 11)}
         }
-    pickle.dump(benchmark_data, open(os.path.join(BENCHMARK_ROOT, f"{args.project_name}_benchmark_results.pkl"), 'wb'))
+    pickle.dump(benchmark_data, open(os.path.join(BENCHMARK_ROOT, 'benchmarks', f"{args.experiment_name}_benchmark_results.pkl"), 'wb'))
     logger.info(f'[Benchmark] Benchmarking completed')
     logger.info(f'[Benchmark] Average cosine similarity: {torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).item()}')
     dereplication_topk = {k: [entry["predictions"]["dereplication_topk"][k] for entry in benchmark_data.values() if entry["predictions"]["dereplication_topk"][k] is not None] for k in range(1, 11)}
     logger.info(f'[Benchmark] Average dereplication top1: {sum(dereplication_topk[1])} out of {len(dereplication_topk[1])} available ({sum(dereplication_topk[1]) / len(dereplication_topk[1]) * 100:.2f}%)')
     logger.info(f'[Benchmark] Average dereplication top5: {sum(dereplication_topk[5])} out of {len(dereplication_topk[5])} available ({sum(dereplication_topk[5]) / len(dereplication_topk[5]) * 100:.2f}%)')
     logger.info(f'[Benchmark] Average dereplication top10: {sum(dereplication_topk[10])} out of {len(dereplication_topk[10])} available ({sum(dereplication_topk[10]) / len(dereplication_topk[10]) * 100:.2f}%)')
+
+    if wandb_run is not None:
+        mean_cos = torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).item()
+        n1, n5, n10 = len(dereplication_topk[1]), len(dereplication_topk[5]), len(dereplication_topk[10])
+        wandb.log({
+            "benchmark/mean_cos": mean_cos,
+            "benchmark/dereplication_top1_pct": sum(dereplication_topk[1]) / n1 * 100 if n1 else 0.0,
+            "benchmark/dereplication_top5_pct": sum(dereplication_topk[5]) / n5 * 100 if n5 else 0.0,
+            "benchmark/dereplication_top10_pct": sum(dereplication_topk[10]) / n10 * 100 if n10 else 0.0,
+            "benchmark/dereplication_top1_count": sum(dereplication_topk[1]),
+            "benchmark/dereplication_top5_count": sum(dereplication_topk[5]),
+            "benchmark/dereplication_top10_count": sum(dereplication_topk[10]),
+        })
