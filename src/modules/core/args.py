@@ -46,7 +46,7 @@ class SMARTArgs:
     dropout: float = 0.1
     
     # jittering default value to wobble the spectra
-    jittering: float = 1.0
+    jittering: float = 0.5
 
     # BCE and cosine similarity loss lambda. 0 for full cosine similarity loss, 1 for full BCE loss.
     lambda_hybrid: float = 0.0
