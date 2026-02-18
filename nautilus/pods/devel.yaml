@@ -32,6 +32,8 @@ spec:
       volumeMounts:
         - mountPath: "/root/gurusmart"
           name: atong-spectre
+        - mountPath: "/root/datasets"
+          name: smart-datasets
         - mountPath: "/workspace"
           name: data-unzip
         - mountPath: /dev/shm

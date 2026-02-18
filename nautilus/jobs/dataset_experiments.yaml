@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: atong-marina-jittering-test-jittering-1-5-seed-0 
+  name: atong-marina-dataset-experiments-dataset-marinadataset4-seed-2 
   labels:
     owner: atong
 spec:
@@ -37,16 +37,14 @@ spec:
             - "-c"
             - >-
               set -euxo pipefail &&
-              bash /root/gurusmart/startup.sh MoonshotDatasetv3.zip &&
+              bash /root/gurusmart/startup.sh MARINADataset4.zip 
               cd /code &&
-              pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-jittering-test-jittering-1-5-seed-0 --jittering 1.5 
+              pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw} --seed 2 --experiment_name marina-dataset-experiments-dataset-marinadataset4-seed-2 
           volumeMounts:
             - mountPath: "/root/gurusmart"
               name: atong-spectre
             - mountPath: "/root/datasets"
               name: smart-datasets
-            - mountPath: /dev/shm
-              name: dshm
             - mountPath: /workspace
               name: data-unzip
             - mountPath: /code
@@ -67,9 +65,9 @@ spec:
         - name: atong-spectre
           persistentVolumeClaim:
             claimName: atong-spectre
-        - name: dshm
-          emptyDir:
-            medium: Memory
+        - name: smart-datasets
+          persistentVolumeClaim:
+            claimName: smart-datasets
         - name: data-unzip
           emptyDir: {}
         - name: code-workdir

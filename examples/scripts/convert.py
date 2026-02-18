@@ -35,8 +35,6 @@ MOD_DIRS = {
     "h_nmr": "H_NMR",
     "c_nmr": "C_NMR",
     "mass_spec": "MassSpec",
-    "hmbc": "HMBC_NMR",
-    "cosy": "COSY_NMR",
     "fragidx": "FragIdx",
 }
 

@@ -60,3 +60,6 @@ class SMARTArgs:
     additional_test_types: list[list[str]] = field(default_factory=lambda: [
         ['hsqc'], ['h_nmr'], ['c_nmr'], ['mass_spec']
     ])
+
+    # split to use for benchmarking
+    benchmark_split: Literal['val', 'test'] = 'val'

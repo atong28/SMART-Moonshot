@@ -73,7 +73,7 @@ def benchmark(
     """
     restrictions = args.input_types if args.restrictions is None else args.restrictions
     if load_from_checkpoint is not None:
-        load_model(args, model, load_from_checkpoint)
+        load_model(args, model)
     if BENCHMARK_ROOT is None:
         raise ValueError('Benchmarking is not supported on this setup')
     logger = get_logger(__file__)
@@ -81,6 +81,7 @@ def benchmark(
     metadata = json.load(open(os.path.join(DATASET_ROOT, "metadata.json"), 'r'))
     meta_smi_to_idx = {entry['canonical_2d_smiles']: int(idx) for idx, entry in metadata.items()}
     benchmark_data: dict[int, Any] = pickle.load(open(os.path.join(BENCHMARK_ROOT, "benchmark.pkl"), 'rb'))
+    benchmark_data = {k: v for k, v in benchmark_data.items() if v['split'] == args.benchmark_split}
     for idx, entry in tqdm(benchmark_data.items()):
         inputs = data_module.format_inference_data(filter_data(entry['input'], restrictions))
         output = model(**inputs)
