@@ -151,7 +151,7 @@ class MARINA(pl.LightningModule):
             for parameter in self.parameters():
                 parameter.requires_grad = False
         self.ranker = None
-        self.spectral_types = ['all_inputs'] + ['_'.join(types) for types in self.args.additional_test_types]
+        self.spectral_types = ['all_inputs'] + ['_'.join(types) for types in self.args.additional_test_types if all(t in self.args.input_types for t in types)]
         if self.global_rank == 0:
             logger.info("[MARINA] Initialized")
 

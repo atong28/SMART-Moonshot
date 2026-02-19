@@ -10,7 +10,7 @@ for dataset in MARINAControl1 MARINABase1 MARINADataset1 MARINADataset2 MARINADa
     yaml="${ROOT_DIR}/jobs/dataset_experiments.yaml"
     # Update YAML
     sed "4s|.*|  name: atong-${experiment_name} |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
-    sed "40s|.*|              bash /root/gurusmart/startup.sh ${dataset}.zip |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
+    sed "40s|.*|              bash /root/gurusmart/startup.sh ${dataset}.zip \&\& |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
     sed "42s|.*|              pixi run train.marina --input_types ${input_types} --seed ${seed} --experiment_name ${experiment_name} |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
 
     job_name="atong-${experiment_name}"

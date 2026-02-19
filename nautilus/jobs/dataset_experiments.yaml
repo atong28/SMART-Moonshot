@@ -37,7 +37,7 @@ spec:
             - "-c"
             - >-
               set -euxo pipefail &&
-              bash /root/gurusmart/startup.sh MARINADataset4.zip 
+              bash /root/gurusmart/startup.sh MARINADataset4.zip && 
               cd /code &&
               pixi run train.marina --input_types {hsqc,c_nmr,h_nmr,mw} --seed 2 --experiment_name marina-dataset-experiments-dataset-marinadataset4-seed-2 
           volumeMounts:

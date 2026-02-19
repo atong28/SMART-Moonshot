@@ -119,6 +119,7 @@ class MARINADataModule(pl.LightningDataModule):
             args.persistent_workers and self.num_workers > 0)
         self.fp_loader = fp_loader
         self.test_types = [args.input_types] + args.additional_test_types
+        self.test_types = [types for types in self.test_types if all(t in args.input_types for t in types)]
         self._fit_is_setup = False
         self._test_is_setup = False
 
