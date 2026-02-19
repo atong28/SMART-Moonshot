@@ -29,6 +29,7 @@ spec:
                     - hcc-nrp-shor-c5805.unl.edu
                     - gpu-09.nrp.mghpcc.org
                     - hcc-nrp-shor-c6017.unl.edu
+                    - nautilus-ext-gpu01.fullerton.edu
       containers:
         - name: demo
           image: gitlab-registry.nrp-nautilus.io/a8tong/smart-moonshot/pixi-cuda:12.8.1

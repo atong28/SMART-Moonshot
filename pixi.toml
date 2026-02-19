@@ -6,8 +6,8 @@ platforms = ["linux-64"]
 version = "0.1.0"
 
 [tasks]
-"train.marina" = { cmd = "torchrun --nproc_per_node=4 --module src.main marina" }
-"train.spectre" = { cmd = "torchrun --nproc_per_node=4 --module src.main spectre" }
+"train.marina" = { cmd = "torchrun --nproc_per_node=4 --module src.main marina", env = { CUDA_LAUNCH_BLOCKING = "1" } }
+"train.spectre" = { cmd = "torchrun --nproc_per_node=4 --module src.main spectre", env = { CUDA_LAUNCH_BLOCKING = "1" } }
 "debug.marina" = { cmd = "torchrun --nproc_per_node=2 --module src.main marina --debug " }
 "debug.spectre" = { cmd = "torchrun --nproc_per_node=2 --module src.main spectre --debug " }
 "benchmark.marina" = { cmd = "python -m src.main marina --no_train --no_test --benchmark --load_from_checkpoint checkpoints/marina_best/best.ckpt" }

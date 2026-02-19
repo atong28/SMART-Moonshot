@@ -5,6 +5,8 @@ import numpy as np
 
 from ..log import get_logger
 
+logger = get_logger(__file__)
+
 
 class FourierFeatures(torch.nn.Module):
     """
@@ -112,7 +114,6 @@ class CoordinateEncoder(torch.nn.Module):
         is_sign_encoding: Optional[Sequence[bool]] = None,
     ):
         super().__init__()
-        self.logger = get_logger(__file__)
 
         dim_coords = list(dim_coords)
         self.dim_coords = dim_coords
@@ -188,7 +189,7 @@ class CoordinateEncoder(torch.nn.Module):
         )
         self._encoder_is_none = [e is None for e in encoders]
 
-        self.logger.debug(
+        logger.debug(
             f"Initialized CoordinateEncoder[{dim_model}] with dims {self.dim_coords}, "
             f"is_sign_encoding={self.is_sign_encoding}, "
             f"{sum(not f for f in self._encoder_is_none)} positional encoders, "

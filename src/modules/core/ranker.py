@@ -6,6 +6,8 @@ import torch.nn.functional as F
 from .utils import set_float32_highest_precision
 from ..log import get_logger
 
+logger = get_logger(__file__)
+
 
 @set_float32_highest_precision
 class RankingSet(torch.nn.Module):
@@ -36,7 +38,6 @@ class RankingSet(torch.nn.Module):
             debug : extra logs.
         """
         super().__init__()
-        self.logger = get_logger(__file__)
 
         self.metric = metric.lower()
         self.eps = float(eps)
@@ -47,7 +48,7 @@ class RankingSet(torch.nn.Module):
 
         # Keep as buffer so it moves with .to(device) but isn't a parameter
         self.register_buffer("data", store, persistent=False)
-        self.logger.info(
+        logger.info(
             f"[RankingSet] Initialized with {self.data.size(0)} sample(s); metric={self.metric}")
 
     @property
@@ -161,8 +162,8 @@ class RankingSet(torch.nn.Module):
             ct = ct - 1
             if self.debug:
                 truth_sims = data @ truths.T
-                self.logger.debug(f"truth_sims shape: {truth_sims.shape}")
-                self.logger.debug(f"ct_greater:\n{ct}")
+                logger.debug(f"truth_sims shape: {truth_sims.shape}")
+                logger.debug(f"ct_greater:\n{ct}")
             return ct.squeeze(0)
 
     def batched_rank(

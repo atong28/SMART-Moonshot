@@ -31,7 +31,7 @@ class SMARTArgs:
     # training args
     debug: bool = False
     batch_size: int = 32
-    num_workers: int = 4
+    num_workers: int = 0
     epochs: int = 750
     patience: int = 30
     persistent_workers: bool = True
