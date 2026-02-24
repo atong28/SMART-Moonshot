@@ -82,10 +82,13 @@ class MARINADataset(Dataset):
             
     def compute_drop_percentage(self, data: dict[int, Any]):
         drop_percentage = {}
-        for input_type in tqdm(self.input_types, desc='Computing drop percentage'):
+        logger.debug(f'[MARINADataset] Computing drop percentage for input types: {self.input_types}')
+        for input_type in self.input_types:
             if input_type not in NON_SPECTRAL_INPUTS:
                 percent_present = sum(1 for entry in data.values() if entry[f'has_{input_type}']) / len(data)
                 drop_percentage[input_type] = 1 - (0.5 / percent_present) if percent_present > 0.5 else 0.0
+            else:
+                drop_percentage[input_type] = 0.5 # hard coded for now for mw (always present)
         return drop_percentage
 
     def __len__(self):

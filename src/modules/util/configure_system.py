@@ -28,17 +28,23 @@ def configure_system():
     )
     warnings.filterwarnings(
         "ignore",
-        message=r"It is recommended to use `self\.log\('.*', \.\.\., sync_dist=True\)` when logging on epoch level",
+        message=r"It is recommended to use `self\.log\(.+sync_dist=True\)` when logging on epoch level.*",
         category=UserWarning,
-        module="pytorch_lightning.trainer.connectors.logger_connector.result"
     )
     warnings.filterwarnings(
         "ignore",
-        message=".*It is recommended to use `self.log\\('test/mean_recall/mass_spec'.*sync_dist=True.*",
+        message=r"The '(train|val|test)_dataloader' does not have many workers which may be a bottleneck\..*",
+        category=UserWarning,
     )
     warnings.filterwarnings(
         "ignore",
-        message=".*The PyTorch API of nested tensors is in prototype stage and will change in the near future.*",
+        message=r"Checkpoint directory .* exists and is not empty\..*",
+        category=UserWarning,
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=r"Sparse CSR tensor support is in beta state\..*",
+        category=UserWarning,
     )
 
     os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"

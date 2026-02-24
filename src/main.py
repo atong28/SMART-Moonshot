@@ -14,12 +14,13 @@ from .modules import (
     benchmark
 )
 from .modules.util import (
+    configure_system,
     set_global_seed,
     get_data_paths,
     configure_wandb,
     write_results
 )
-from .modules.log import get_logger, setup_file_logging
+from .modules.log import get_logger
 
 from .modules.data.fp_loader import make_fp_loader
 from .modules.core.const import DATASET_ROOT
@@ -36,21 +37,11 @@ ARCH_DATAMODULE_CLASSES = {
 }
 
 
-def _log_and_reraise(logger, message: str) -> None:
-    """
-    Helper to log the current exception with a message and re-raise it.
-
-    This should only be called from within an `except` block so that the
-    original traceback is preserved.
-    """
-    logger.exception(message)
-    # Re-raise the currently handled exception with its original traceback.
-    raise
-
-
 def main():
-    # create timestamp for run
-    today = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    configure_system()
+    # create timestamp for run (allow overriding so launchers can pre-create
+    # the results directory and capture stdout/stderr into it)
+    today = os.environ.get("SMART_RUN_ID") or datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     # parse the args
     args: MARINAArgs | SPECTREArgs = parse_args()
     # seed the libs
@@ -76,57 +67,45 @@ def main():
     # paths to output data
     results_path, final_path = get_data_paths(args, today)
 
-    # logger and file logging must be initialized before any work so that
-    # uncaught exceptions always have a destination.
     logger = get_logger(__file__)
-    setup_file_logging(logger, os.path.join(final_path, "logs.txt"))
 
-    try:
-        # create a wandb run
-        wandb_run = configure_wandb(args, results_path, today)
+    # create a wandb run
+    wandb_run = configure_wandb(args, results_path, today)
 
-        # train a model using the args as input
-        if args.train:
-            train(
-                args,
-                data_module,
-                model,
-                results_path,
-                wandb_run=wandb_run,
-                fp_loader=fp_loader
-            )
-        elif args.test:
-            test(
-                args,
-                data_module,
-                model,
-                results_path,
-                ckpt_path=args.load_from_checkpoint,
-                wandb_run=wandb_run,
-                fp_loader=fp_loader
-            )
-        elif args.benchmark:
-            benchmark(
-                args,
-                data_module,
-                model,
-                fp_loader,
-                wandb_run=wandb_run,
-                load_from_checkpoint=args.load_from_checkpoint
-            )
-        else:
-            raise ValueError("[Main] Nothing to do!")
+    # train a model using the args as input
+    if args.train:
+        train(
+            args,
+            data_module,
+            model,
+            results_path,
+            wandb_run=wandb_run,
+            fp_loader=fp_loader
+        )
+    elif args.test:
+        test(
+            args,
+            data_module,
+            model,
+            results_path,
+            ckpt_path=args.load_from_checkpoint,
+            wandb_run=wandb_run,
+            fp_loader=fp_loader
+        )
+    elif args.benchmark:
+        benchmark(
+            args,
+            data_module,
+            model,
+            fp_loader,
+            wandb_run=wandb_run,
+            load_from_checkpoint=args.load_from_checkpoint
+        )
+    else:
+        raise ValueError("[Main] Nothing to do!")
 
-        # if it was a training run write out the results to a path and end the wandb run
-        write_results(args, final_path, results_path, logger, wandb_run)
-    except Exception as e:
-        # torchrun aggregates worker failures into ChildFailedError on the
-        # parent process; handle that case with a clearer message, but still
-        # re-raise so job infrastructure sees a failure.
-        if e.__class__.__name__ == "ChildFailedError":
-            _log_and_reraise(logger, "[Main] ChildFailedError in distributed run; check worker logs for details.")
-        else:
-            _log_and_reraise(logger, "[Main] Unhandled exception in main()")
+    # if it was a training run write out the results to a path and end the wandb run
+    write_results(args, final_path, results_path, logger, wandb_run)
 
 
 if __name__ == "__main__":

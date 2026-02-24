@@ -29,7 +29,22 @@ def write_results(
 
         os.makedirs(os.path.dirname(final_path), exist_ok=True)
 
-        shutil.move(results_path, final_path)
+        # If a launcher pre-created final_path (e.g., to tee stdout/stderr there),
+        # avoid nesting results under final_path/today by merging contents instead.
+        if os.path.exists(final_path):
+            if not os.path.isdir(final_path):
+                raise RuntimeError(f"[Main] final_path exists but is not a directory: {final_path}")
+
+            os.makedirs(final_path, exist_ok=True)
+            for name in os.listdir(results_path):
+                src = os.path.join(results_path, name)
+                dst = os.path.join(final_path, name)
+                if os.path.exists(dst):
+                    shutil.rmtree(dst) if os.path.isdir(dst) else os.remove(dst)
+                shutil.move(src, dst)
+            os.rmdir(results_path)
+        else:
+            shutil.move(results_path, final_path)
 
         if wandb_run is not None:
             wandb.finish()

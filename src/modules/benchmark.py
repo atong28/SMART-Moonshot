@@ -83,7 +83,7 @@ def benchmark(
     benchmark_data: dict[int, Any] = pickle.load(open(os.path.join(BENCHMARK_ROOT, "benchmark.pkl"), 'rb'))
     if args.benchmark_split != 'all':
         benchmark_data = {k: v for k, v in benchmark_data.items() if v['split'] == args.benchmark_split}
-    for idx, entry in tqdm(benchmark_data.items()):
+    for idx, entry in tqdm(benchmark_data.items(), desc='Benchmarking'):
         inputs = data_module.format_inference_data(filter_data(entry['input'], restrictions))
         output = model(**inputs)
         pred = torch.sigmoid(output[0])
