@@ -5,14 +5,14 @@ import traceback
 import sys
 from itertools import islice
 from typing import Any, List, Optional
-
+from tqdm import tqdm
 from torch.utils.data import DataLoader, Dataset
 from torch.nn.utils.rnn import pad_sequence
 import pytorch_lightning as pl
 
 from .args import MARINAArgs
 
-from ..core.const import DEBUG_LEN, DROP_PERCENTAGE, INPUTS_CANONICAL_ORDER, DATASET_ROOT, NON_SPECTRAL_INPUTS
+from ..core.const import DEBUG_LEN, INPUTS_CANONICAL_ORDER, DATASET_ROOT, NON_SPECTRAL_INPUTS
 
 from ..data.fp_loader import FPLoader
 from ..data.inputs import MARINAInputLoader, MFInputLoader
@@ -67,6 +67,8 @@ class MARINADataset(Dataset):
             self.spectral_loader = MARINAInputLoader(
                 DATASET_ROOT, data, split=split)
             self.mfp_loader = MFInputLoader(fp_loader)
+            
+            self.drop_percentage = self.compute_drop_percentage(data)
 
             self.data = list(data.items())
 
@@ -77,6 +79,14 @@ class MARINADataset(Dataset):
             logger.error(
                 '[MARINADataset] While instantiating the dataset, ran into the above error.')
             sys.exit(1)
+            
+    def compute_drop_percentage(self, data: dict[int, Any]):
+        drop_percentage = {}
+        for input_type in tqdm(self.input_types, desc='Computing drop percentage'):
+            if input_type not in NON_SPECTRAL_INPUTS:
+                percent_present = sum(1 for entry in data.values() if entry[f'has_{input_type}']) / len(data)
+                drop_percentage[input_type] = 1 - (0.5 / percent_present) if percent_present > 0.5 else 0.0
+        return drop_percentage
 
     def __len__(self):
         return len(self.data)
@@ -104,7 +114,7 @@ class MARINADataset(Dataset):
                 input_types.remove(input_type)
             elif (input_type != always_keep and
                   input_type not in self.requires and
-                  torch.rand(1).item() < DROP_PERCENTAGE[input_type]):
+                  torch.rand(1).item() < self.drop_percentage[input_type]):
                 input_types.remove(input_type)
         return self.spectral_loader.load(data_idx, input_types, jittering=self.jittering), self.mfp_loader.load(data_idx)
 

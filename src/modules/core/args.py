@@ -62,4 +62,4 @@ class SMARTArgs:
     ])
 
     # split to use for benchmarking
-    benchmark_split: Literal['val', 'test'] = 'val'
+    benchmark_split: Literal['val', 'test', 'all'] = 'val'

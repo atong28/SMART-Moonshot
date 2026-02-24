@@ -3,15 +3,16 @@ ROOT_DIR=/data/nas-gpu/wang/atong/SMART-Moonshot/nautilus
 experiment="marina-dataset-experiments"
 input_types="{hsqc,c_nmr,h_nmr,mw}"
 
-for dataset in MARINAControl1 MARINABase1 MARINADataset1 MARINADataset2 MARINADataset3 MARINADataset4; do
-  for seed in 0 1 2; do
+# for dataset in MARINAControl1 MARINABase1 MARINADataset1 MARINADataset2 MARINADataset3 MARINADataset4; do
+for dataset in MARINABase1; do
+  for seed in 0; do
     dataset_lowercase=$(echo "$dataset" | tr '[:upper:]' '[:lower:]')
     experiment_name="${experiment}-dataset-${dataset_lowercase}-seed-${seed}"
     yaml="${ROOT_DIR}/jobs/dataset_experiments.yaml"
     # Update YAML
     sed "4s|.*|  name: atong-${experiment_name} |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
-    sed "40s|.*|              bash /root/gurusmart/startup.sh ${dataset}.zip \&\& |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
-    sed "42s|.*|              pixi run train.marina --input_types ${input_types} --seed ${seed} --experiment_name ${experiment_name} |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
+    sed "41s|.*|              bash /root/gurusmart/startup.sh ${dataset}.zip \&\& |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
+    sed "43s|.*|              pixi run train.marina --input_types ${input_types} --seed ${seed} --experiment_name ${experiment_name} |" "$yaml" > "$yaml.tmp" && mv "$yaml.tmp" "$yaml"
 
     job_name="atong-${experiment_name}"
     # Check if job exists

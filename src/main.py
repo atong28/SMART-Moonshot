@@ -1,6 +1,5 @@
 import os
 from datetime import datetime
-import torch
 
 from .modules import (
     MARINA,
