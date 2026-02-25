@@ -1,12 +1,6 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """
-Convert between LMDB-based dataset format and regular JSONL dataset format.
-
-This script supports bidirectional conversion:
-  - from_lmdb: Converts LMDB shards to JSONL files
-  - to_lmdb: Converts JSONL files to LMDB shards
-
-Regular files (index.pkl, retrieval.pkl, metadata.json, etc.) are copied as-is.
+Convert between Arrow-based dataset format and regular JSONL dataset format.
 """
 
 from __future__ import annotations
@@ -16,20 +10,13 @@ import json
 import os
 import pickle
 import shutil
-from dataclasses import dataclass
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Any, Dict, List
 
-import lmdb
-import numpy as np
-import torch
+import pyarrow as pa
+import pyarrow.parquet as pq
 from tqdm import tqdm
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
 SPLITS = ("train", "val", "test")
-# lmdb dirs to convert
 MOD_DIRS = {
     "hsqc": "HSQC_NMR",
     "h_nmr": "H_NMR",
@@ -38,448 +25,184 @@ MOD_DIRS = {
     "fragidx": "FragIdx",
 }
 
-# files/dirs to copy as is
 REGULAR_FILES = [
     "index.pkl",
     "retrieval.pkl",
     "metadata.json",
     "count_hashes_under_radius_6.pkl",
 ]
-REGULAR_DIRS = [
-    "RankingEntropy",
-]
+REGULAR_DIRS = ["RankingEntropy"]
 
 
-# ---------------------------------------------------------------------------
-# Tensor encoding/decoding (matching existing format)
-# ---------------------------------------------------------------------------
-
-def encode_tensor_raw(t: torch.Tensor) -> bytes:
-    """Encode tensor to bytes with header: dtype|ndim|shape|<raw-bytes>"""
-    t = t.contiguous()
-    arr = np.ascontiguousarray(t.detach().cpu().numpy())
-    header = f"{arr.dtype.name}|{arr.ndim}|{','.join(map(str, arr.shape))}|".encode("ascii")
-    return header + memoryview(arr)
-
-
-def decode_tensor_from_bytes(buf: bytes) -> torch.Tensor:
-    """Decode tensor from bytes with header format"""
-    mv = memoryview(buf)
-    b = mv.tobytes()  # small header copy
-    first = b.index(b'|')
-    second = b.index(b'|', first + 1)
-    third = b.index(b'|', second + 1)
-    dtype_str = b[:first].decode('ascii')
-    ndim = int(b[first+1:second].decode('ascii'))
-    shape = tuple(int(x) for x in b[second+1:third].decode('ascii').split(',')) if ndim > 0 else ()
-    _DT = {
-        'float32': np.float32, 'float64': np.float64,
-        'int64': np.int64, 'int32': np.int32, 'int16': np.int16,
-        'uint8': np.uint8
-    }
-    dt = _DT[dtype_str]
-    arr = np.frombuffer(mv[third+1:], dtype=dt, count=(int(np.prod(shape)) if shape else -1))
-    if shape:
-        arr = arr.reshape(shape)
-    return torch.from_numpy(arr.copy())
-
-
-# ---------------------------------------------------------------------------
-# Tensor <-> List conversions
-# ---------------------------------------------------------------------------
-
-def tensor_to_list(tensor: torch.Tensor) -> List[Any]:
-    """Convert tensor to Python list (handles 1D and 2D tensors)"""
-    arr = tensor.detach().cpu().numpy()
-    if arr.ndim == 1:
-        return arr.tolist()
-    elif arr.ndim == 2:
-        return arr.tolist()
-    else:
-        raise ValueError(f"Unsupported tensor shape: {arr.shape}")
-
-
-def list_to_tensor(data: List[Any], dtype: torch.dtype = torch.float32) -> torch.Tensor:
-    """Convert Python list to tensor"""
-    if not data:
-        return None
-    arr = np.array(data, dtype=dtype.numpy_dtype if hasattr(dtype, 'numpy_dtype') else np.float32)
-    return torch.from_numpy(arr)
-
-
-# ---------------------------------------------------------------------------
-# LMDB -> JSONL conversion
-# ---------------------------------------------------------------------------
-
-class LMDBReader:
-    """Read-only LMDB environment that can be reused"""
-    
-    def __init__(self, lmdb_path: str):
-        self.lmdb_path = lmdb_path
-        self._env = None
-    
-    def _get_env(self):
-        if self._env is None:
-            if not os.path.isdir(self.lmdb_path):
-                return None
-            self._env = lmdb.open(
-                self.lmdb_path,
-                readonly=True,
-                lock=False,
-                readahead=False,
-                max_readers=4096,
-                subdir=True
-            )
-        return self._env
-    
-    def get_tensor(self, idx: int) -> Optional[torch.Tensor]:
-        """Read a tensor from LMDB by index"""
-        env = self._get_env()
-        if env is None:
-            return None
-        
-        key = str(idx).encode("utf-8")
-        try:
-            with env.begin(write=False, buffers=True) as txn:
-                buf = txn.get(key)
-            if buf is None:
-                return None
-            return decode_tensor_from_bytes(bytes(buf))
-        except Exception as e:
-            print(f"Warning: Error reading idx {idx} from {self.lmdb_path}: {e}")
-            return None
-    
-    def close(self):
-        if self._env is not None:
-            self._env.close()
-            self._env = None
-
-
-def convert_from_lmdb(input_dir: str, output_dir: str):
-    """Convert LMDB dataset to JSONL format"""
-    print(f"Converting from LMDB format: {input_dir} -> {output_dir}")
-    
-    # Load index
-    index_path = os.path.join(input_dir, "index.pkl")
-    if not os.path.exists(index_path):
-        raise FileNotFoundError(f"index.pkl not found in {input_dir}")
-    
-    with open(index_path, "rb") as f:
-        index = pickle.load(f)
-    
-    # Create output directory
+def _copy_regular_data(input_dir: str, output_dir: str) -> None:
     os.makedirs(output_dir, exist_ok=True)
-    
-    # Copy regular files
-    print("Copying regular files...")
     for filename in REGULAR_FILES:
         src = os.path.join(input_dir, filename)
-        if os.path.exists(src):
-            dst = os.path.join(output_dir, filename)
-            shutil.copy2(src, dst)
-            print(f"  Copied {filename}")
-    
-    # Copy regular directories
+        if os.path.isfile(src):
+            shutil.copy2(src, os.path.join(output_dir, filename))
     for dirname in REGULAR_DIRS:
         src = os.path.join(input_dir, dirname)
-        if os.path.exists(src):
+        if os.path.isdir(src):
             dst = os.path.join(output_dir, dirname)
             if os.path.exists(dst):
                 shutil.rmtree(dst)
             shutil.copytree(src, dst)
-            print(f"  Copied {dirname}/")
-    
-    # Convert LMDB shards to JSONL
-    lmdb_base = os.path.join(input_dir, "_lmdb")
-    if not os.path.exists(lmdb_base):
-        print(f"Warning: _lmdb directory not found in {input_dir}, skipping LMDB conversion")
-        return
-    
-    # Group indices by split
+
+
+def convert_from_arrow(input_dir: str, output_dir: str) -> None:
+    print(f"Converting from Arrow format: {input_dir} -> {output_dir}")
+    _copy_regular_data(input_dir, output_dir)
+
+    index_path = os.path.join(input_dir, "index.pkl")
+    with open(index_path, "rb") as f:
+        index = pickle.load(f)
+
     split_indices: Dict[str, List[int]] = {split: [] for split in SPLITS}
-    for idx_str, entry in index.items():
-        idx = int(idx_str)
+    for idx_key, entry in index.items():
+        idx = int(idx_key)
         split = entry.get("split", "train")
         if split in split_indices:
             split_indices[split].append(idx)
-    
-    # Process each split
+
+    arrow_base = os.path.join(input_dir, "arrow")
     for split in SPLITS:
         indices = sorted(split_indices[split])
         if not indices:
-            print(f"Skipping {split} (no entries)")
             continue
-        
-        jsonl_path = os.path.join(output_dir, f"{split}.jsonl")
-        print(f"\nConverting {split} ({len(indices)} entries) -> {jsonl_path}")
-        
-        # Open LMDB readers for this split (reuse across all indices)
-        split_lmdb_dir = os.path.join(lmdb_base, split)
-        readers: Dict[str, LMDBReader] = {}
+
+        modality_rows: dict[str, dict[int, tuple[list[float], list[int]]]] = {}
+        split_arrow_dir = os.path.join(arrow_base, split)
         for mod_key, mod_dir in MOD_DIRS.items():
-            lmdb_path = os.path.join(split_lmdb_dir, f"{mod_dir}.lmdb")
-            readers[mod_key] = LMDBReader(lmdb_path)
-        
-        try:
-            with open(jsonl_path, "w") as f:
-                for idx in tqdm(indices, desc=f"{split}"):
-                    entry = index[idx]
-                    
-                    # Build JSON entry
-                    json_entry = {
-                        "idx": idx,
-                        "smiles": entry.get("smiles", ""),
-                        "split": split,
-                    }
-                    
-                    # Copy all metadata from index entry
-                    for key, value in entry.items():
-                        if key not in ["smiles", "split"]:
-                            json_entry[key] = value
-                    
-                    # Load tensors from LMDB and convert to lists
-                    for mod_key, mod_dir in MOD_DIRS.items():
-                        reader = readers[mod_key]
-                        tensor = reader.get_tensor(idx)
-                        if tensor is not None:
-                            if mod_key == "fragidx":
-                                # FragIdx is int32 array
-                                json_entry["fragidx"] = tensor.detach().cpu().numpy().astype(int).tolist()
-                            elif mod_key in ["h_nmr", "c_nmr"]:
-                                # 1D tensors (or 2D with shape (N, 1)) -> list of floats
-                                if tensor.ndim == 2 and tensor.shape[1] == 1:
-                                    tensor = tensor.squeeze(1)
-                                json_entry[mod_key] = tensor_to_list(tensor)
-                            elif tensor.ndim == 2 and tensor.shape[1] == 2:
-                                # 2D with 2 columns: hsqc, cosy, hmbc, mass_spec -> list of [x, y] pairs
-                                json_entry[mod_key] = tensor_to_list(tensor)
-                            else:
-                                # Fallback: convert to list
-                                json_entry[mod_key] = tensor_to_list(tensor)
-                    
-                    f.write(json.dumps(json_entry) + "\n")
-        finally:
-            # Close all readers
-            for reader in readers.values():
-                reader.close()
-        
-        print(f"  Wrote {len(indices)} entries to {jsonl_path}")
+            parquet_path = os.path.join(split_arrow_dir, f"{mod_dir}.parquet")
+            if not os.path.isfile(parquet_path):
+                continue
+            table = pq.read_table(parquet_path)
+            idx_values = table["idx"].to_pylist()
+            if mod_key == "fragidx":
+                cols_values = table["cols"].to_pylist()
+                modality_rows[mod_key] = {int(idx): (cols, []) for idx, cols in zip(idx_values, cols_values)}
+            else:
+                data_values = table["data"].to_pylist()
+                shape_values = table["shape"].to_pylist()
+                modality_rows[mod_key] = {
+                    int(idx): (data, shape)
+                    for idx, data, shape in zip(idx_values, data_values, shape_values)
+                }
+
+        out_jsonl = os.path.join(output_dir, f"{split}.jsonl")
+        with open(out_jsonl, "w", encoding="utf-8") as f:
+            for idx in tqdm(indices, desc=f"{split}"):
+                entry = index[idx]
+                json_entry: dict[str, Any] = {"idx": idx, "smiles": entry.get("smiles", ""), "split": split}
+                for k, v in entry.items():
+                    if k not in {"smiles", "split"}:
+                        json_entry[k] = v
+
+                for mod_key in MOD_DIRS:
+                    rows = modality_rows.get(mod_key, {})
+                    if idx not in rows:
+                        continue
+                    data, shape = rows[idx]
+                    if mod_key == "fragidx":
+                        json_entry["fragidx"] = [int(v) for v in data]
+                        continue
+                    if len(shape) == 2:
+                        n, d = int(shape[0]), int(shape[1])
+                        rebuilt = [data[i * d:(i + 1) * d] for i in range(n)]
+                        if mod_key in {"h_nmr", "c_nmr"} and d == 1:
+                            rebuilt = [row[0] for row in rebuilt]
+                        json_entry[mod_key] = rebuilt
+                    elif len(shape) == 1:
+                        json_entry[mod_key] = data
+                    else:
+                        json_entry[mod_key] = data
+
+                f.write(json.dumps(json_entry) + "\n")
 
 
-# ---------------------------------------------------------------------------
-# JSONL -> LMDB conversion
-# ---------------------------------------------------------------------------
-
-@dataclass
-class LMDBWriter:
-    """Append tensors to an existing LMDB shard, auto-resizing as needed."""
-    
-    path: str
-    batch_size: int = 1024
-    initial_map_size: int = 1 << 40  # ~1 TB
-    
-    def __post_init__(self):
-        os.makedirs(self.path, exist_ok=True)
-        self.env = lmdb.open(
-            self.path,
-            map_size=self.initial_map_size,
-            subdir=True,
-            lock=True,
-            writemap=False,
-            map_async=False,
-            max_dbs=1,
-        )
-        self._batch: List[Tuple[int, bytes]] = []
-    
-    def add(self, idx: int, tensor: torch.Tensor):
-        if tensor is None:
-            return
-        self._batch.append((idx, encode_tensor_raw(tensor)))
-        if len(self._batch) >= self.batch_size:
-            self._flush()
-    
-    def _flush(self):
-        if not self._batch:
-            return
-        while True:
-            try:
-                with self.env.begin(write=True) as txn:
-                    for idx, buf in self._batch:
-                        txn.put(str(idx).encode("utf-8"), buf)
-                break
-            except lmdb.MapFullError:
-                current = self.env.info()["map_size"]
-                self.env.set_mapsize(int(current * 1.5))
-        self._batch.clear()
-    
-    def close(self):
-        self._flush()
-        self.env.sync()
-        self.env.close()
+def _flatten_with_shape(value: Any) -> tuple[list[float], list[int]]:
+    if isinstance(value, list) and value and isinstance(value[0], list):
+        shape = [len(value), len(value[0])]
+        flat = [float(x) for row in value for x in row]
+        return flat, shape
+    if isinstance(value, list):
+        shape = [len(value)]
+        flat = [float(x) for x in value]
+        return flat, shape
+    return [], []
 
 
-def convert_to_lmdb(input_dir: str, output_dir: str):
-    """Convert JSONL dataset to LMDB format"""
-    print(f"Converting to LMDB format: {input_dir} -> {output_dir}")
-    
-    # Create output directory
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Copy regular files
-    print("Copying regular files...")
-    for filename in REGULAR_FILES:
-        src = os.path.join(input_dir, filename)
-        if os.path.exists(src):
-            dst = os.path.join(output_dir, filename)
-            shutil.copy2(src, dst)
-            print(f"  Copied {filename}")
-    
-    # Copy regular directories
-    for dirname in REGULAR_DIRS:
-        src = os.path.join(input_dir, dirname)
-        if os.path.exists(src):
-            dst = os.path.join(output_dir, dirname)
-            if os.path.exists(dst):
-                shutil.rmtree(dst)
-            shutil.copytree(src, dst)
-            print(f"  Copied {dirname}/")
-    
-    # Load index if it exists (for validation)
-    index_path = os.path.join(input_dir, "index.pkl")
-    index = {}
-    if os.path.exists(index_path):
-        with open(index_path, "rb") as f:
-            index = pickle.load(f)
-    
-    # Create LMDB writers for each split and modality
-    lmdb_base = os.path.join(output_dir, "_lmdb")
-    os.makedirs(lmdb_base, exist_ok=True)
-    
-    split_writers: Dict[str, Dict[str, LMDBWriter]] = {}
-    
-    # Process each split
+def convert_to_arrow(input_dir: str, output_dir: str) -> None:
+    print(f"Converting to Arrow format: {input_dir} -> {output_dir}")
+    _copy_regular_data(input_dir, output_dir)
+
+    arrow_base = os.path.join(output_dir, "arrow")
+    os.makedirs(arrow_base, exist_ok=True)
+
     for split in SPLITS:
         jsonl_path = os.path.join(input_dir, f"{split}.jsonl")
-        if not os.path.exists(jsonl_path):
-            print(f"Skipping {split} (no {split}.jsonl file)")
+        if not os.path.isfile(jsonl_path):
             continue
-        
-        print(f"\nConverting {split} from {jsonl_path}")
-        
-        # Initialize writers for this split
-        split_dir = os.path.join(lmdb_base, split)
-        os.makedirs(split_dir, exist_ok=True)
-        split_writers[split] = {}
-        for mod_key, mod_dir in MOD_DIRS.items():
-            lmdb_path = os.path.join(split_dir, f"{mod_dir}.lmdb")
-            split_writers[split][mod_key] = LMDBWriter(lmdb_path)
-        
-        # Process JSONL file
-        count = 0
-        with open(jsonl_path, "r") as f:
+
+        split_rows: dict[str, list[tuple[int, list[float], list[int]]]] = {
+            "hsqc": [],
+            "h_nmr": [],
+            "c_nmr": [],
+            "mass_spec": [],
+        }
+        frag_rows: list[tuple[int, list[int]]] = []
+
+        with open(jsonl_path, "r", encoding="utf-8") as f:
             for line in tqdm(f, desc=f"{split}"):
-                line = line.strip()
-                if not line:
+                if not line.strip():
                     continue
-                
-                try:
-                    data = json.loads(line)
-                except json.JSONDecodeError as e:
-                    print(f"Warning: Skipping invalid JSON line: {e}")
-                    continue
-                
-                idx = data.get("idx")
-                if idx is None:
-                    print(f"Warning: Skipping entry without idx")
-                    continue
-                
-                # Convert modalities to tensors and write to LMDB
-                for mod_key, mod_dir in MOD_DIRS.items():
-                    if mod_key not in data:
+                row = json.loads(line)
+                idx = int(row["idx"])
+                for mod_key in split_rows:
+                    if mod_key not in row or row[mod_key] in (None, []):
                         continue
-                    
-                    mod_data = data[mod_key]
-                    if mod_data is None or (isinstance(mod_data, list) and len(mod_data) == 0):
-                        continue
-                    
-                    try:
-                        if mod_key == "fragidx":
-                            # FragIdx: list of ints -> int32 tensor (1D)
-                            tensor = torch.tensor(mod_data, dtype=torch.int32)
-                        elif mod_key in ["h_nmr", "c_nmr"]:
-                            # 1D: list of floats -> 1D tensor (stored as 1D, reshaped in loader)
-                            tensor = torch.tensor(mod_data, dtype=torch.float32)
-                        elif mod_key in ["hsqc", "cosy", "hmbc", "mass_spec"]:
-                            # 2D: list of [x, y] pairs -> (N, 2) tensor
-                            arr = np.array(mod_data, dtype=np.float32)
-                            if arr.ndim == 1:
-                                # Handle edge case: single value
-                                arr = arr.reshape(-1, 1)
-                            tensor = torch.from_numpy(arr)
-                        else:
-                            # Fallback: try to convert to tensor
-                            tensor = list_to_tensor(mod_data)
-                        
-                        split_writers[split][mod_key].add(idx, tensor)
-                    except Exception as e:
-                        print(f"Warning: Failed to convert {mod_key} for idx {idx}: {e}")
-                
-                count += 1
-        
-        # Close all writers for this split
-        for writer in split_writers[split].values():
-            writer.close()
-        
-        print(f"  Converted {count} entries for {split}")
-    
-    print("\nConversion complete!")
+                    flat, shape = _flatten_with_shape(row[mod_key])
+                    split_rows[mod_key].append((idx, flat, shape))
+                if "fragidx" in row and row["fragidx"] is not None:
+                    frag_rows.append((idx, [int(v) for v in row["fragidx"]]))
+
+        split_dir = os.path.join(arrow_base, split)
+        os.makedirs(split_dir, exist_ok=True)
+        for mod_key, mod_dir in MOD_DIRS.items():
+            if mod_key == "fragidx":
+                if not frag_rows:
+                    continue
+                table = {
+                    "idx": [r[0] for r in frag_rows],
+                    "cols": [r[1] for r in frag_rows],
+                }
+                pq.write_table(pa.table(table), os.path.join(split_dir, f"{mod_dir}.parquet"))
+                continue
+
+            rows = split_rows.get(mod_key, [])
+            if not rows:
+                continue
+            table = {
+                "idx": [r[0] for r in rows],
+                "data": [r[1] for r in rows],
+                "shape": [r[2] for r in rows],
+            }
+            pq.write_table(pa.table(table), os.path.join(split_dir, f"{mod_dir}.parquet"))
 
 
-# ---------------------------------------------------------------------------
-# CLI
-# ---------------------------------------------------------------------------
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Convert between LMDB and JSONL dataset formats",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog="""
-Examples:
-  # Convert LMDB dataset to JSONL
-  python convert.py --from-lmdb /path/to/lmdb_dataset /path/to/jsonl_dataset
-  
-  # Convert JSONL dataset to LMDB
-  python convert.py --to-lmdb /path/to/jsonl_dataset /path/to/lmdb_dataset
-        """
-    )
-    
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Convert between Arrow and JSONL dataset formats")
     group = parser.add_mutually_exclusive_group(required=True)
-    group.add_argument(
-        "--from-lmdb",
-        action="store_true",
-        help="Convert from LMDB format to JSONL format"
-    )
-    group.add_argument(
-        "--to-lmdb",
-        action="store_true",
-        help="Convert from JSONL format to LMDB format"
-    )
-    
-    parser.add_argument(
-        "input_dir",
-        help="Input dataset directory"
-    )
-    parser.add_argument(
-        "output_dir",
-        help="Output dataset directory"
-    )
-    
+    group.add_argument("--from-arrow", action="store_true", help="Convert from Arrow format to JSONL format")
+    group.add_argument("--to-arrow", action="store_true", help="Convert from JSONL format to Arrow format")
+    parser.add_argument("input_dir", help="Input dataset directory")
+    parser.add_argument("output_dir", help="Output dataset directory")
     args = parser.parse_args()
-    
-    if args.from_lmdb:
-        convert_from_lmdb(args.input_dir, args.output_dir)
-    elif args.to_lmdb:
-        convert_to_lmdb(args.input_dir, args.output_dir)
+
+    if args.from_arrow:
+        convert_from_arrow(args.input_dir, args.output_dir)
+    elif args.to_arrow:
+        convert_to_arrow(args.input_dir, args.output_dir)
 
 
 if __name__ == "__main__":

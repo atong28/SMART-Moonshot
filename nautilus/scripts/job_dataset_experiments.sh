@@ -3,9 +3,9 @@ ROOT_DIR=/data/nas-gpu/wang/atong/SMART-Moonshot/nautilus
 experiment="marina-dataset-experiments"
 input_types="{hsqc,c_nmr,h_nmr,mw}"
 
-# for dataset in MARINAControl1 MARINABase1 MARINADataset1 MARINADataset2 MARINADataset3 MARINADataset4; do
-for dataset in MARINABase1; do
-  for seed in 0; do
+for dataset in MARINAControl1 MARINABase1 MARINADataset1 MARINADataset2 MARINADataset3 MARINADataset4; do
+# for dataset in MARINABase1; do
+  for seed in 0 1 2; do
     dataset_lowercase=$(echo "$dataset" | tr '[:upper:]' '[:lower:]')
     experiment_name="${experiment}-dataset-${dataset_lowercase}-seed-${seed}"
     yaml="${ROOT_DIR}/jobs/dataset_experiments.yaml"

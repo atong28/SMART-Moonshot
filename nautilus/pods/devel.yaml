@@ -57,6 +57,9 @@ spec:
     - name: atong-spectre
       persistentVolumeClaim:
         claimName: atong-spectre
+    - name: smart-datasets
+      persistentVolumeClaim:
+        claimName: smart-datasets
     - name: dshm
       emptyDir:
         medium: Memory

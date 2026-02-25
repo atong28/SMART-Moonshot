@@ -10,11 +10,11 @@ spec:
       command: ["sh", "-c", "sleep infinity"]
       resources:
         requests:
-          cpu: "10m"
-          memory: "32Mi"
+          cpu: "100m"
+          memory: "1Gi"
         limits:
           cpu: "100m"
-          memory: "128Mi"
+          memory: "1Gi"
       volumeMounts:
         - name: atong-spectre
           mountPath: /root/gurusmart

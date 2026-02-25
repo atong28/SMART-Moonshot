@@ -10,10 +10,10 @@ from typing import Optional, Dict, List
 
 import numpy as np
 import torch
-import lmdb
 
 from ..core.const import DATASET_ROOT
 from ..log import get_logger
+from .arrow_store import ArrowFragIdxStore
 
 from .fp_utils import (
     BitInfo as Feature,            # (bit_id, atom_symbol, frag_smiles, radius)
@@ -25,49 +25,6 @@ from .fp_utils import (
     generate_fragments_for_training,
     count_circular_substructures,
 )
-
-
-class _PIDAwareLMDB:
-    """
-    Read-only, lazily opened LMDB env that re-opens per-process (PID-aware).
-    Keys are utf-8 stringified idx; values are raw bytes with header:
-      b"{dtype}|{ndim}|{d0},{d1},...|<raw-bytes>"
-    """
-
-    def __init__(self, path: str):
-        self.path = path
-        self._env = None
-        self._pid = None
-
-    def _env_for_pid(self):
-        pid = os.getpid()
-        if self._env is None or self._pid != pid:
-            self._env = lmdb.open(
-                self.path,
-                readonly=True,
-                lock=False,
-                readahead=False,
-                subdir=True,
-                max_readers=4096,
-            )
-            self._pid = pid
-        return self._env
-
-    def get_bytes(self, key_str: str) -> bytes:
-        key = key_str.encode("utf-8")
-        env = self._env_for_pid()
-        # single retry on stale handle
-        try:
-            with env.begin(write=False, buffers=True) as txn:
-                buf = txn.get(key)
-        except lmdb.Error:
-            self._env = None
-            env = self._env_for_pid()
-            with env.begin(write=False, buffers=True) as txn:
-                buf = txn.get(key)
-        if buf is None:
-            raise KeyError(f"Key {key_str} not found in {self.path}")
-        return bytes(buf)  # header parse needs a tiny copy of header anyway
 
 
 class FPLoader:
@@ -87,11 +44,11 @@ class FPLoader:
 class EntropyFPLoader(FPLoader):
     """
     Select top-K features by entropy (from retrieval set), then:
-      • build MFPs for training molecules using pre-mapped FragIdx (LMDB int32 arrays)
+      • build MFPs for training molecules using pre-mapped FragIdx (Arrow int32 lists)
       • build a CSR rankingset over the retrieval molecules (optional)
 
     Data layout (required):
-        DATASET_ROOT/_lmdb/<split>/FragIdx.lmdb        # per-idx sorted int32 col indices
+        DATASET_ROOT/arrow/<split>/FragIdx.parquet     # per-idx sorted int32 col indices
     """
 
     def __init__(
@@ -114,11 +71,11 @@ class EntropyFPLoader(FPLoader):
         self._idx_to_split: Optional[Dict[int, str]] = None
         self._index_loaded: bool = False
 
-        # Split-scoped LMDB envs (lazy-open on first use)
+        # Split-scoped FragIdx stores (lazy-open on first use)
         # store both split keys and FragIdx keys
-        self._frag_envs: Dict[str, Optional[_PIDAwareLMDB]] = {}
+        self._frag_stores: Dict[str, Optional[ArrowFragIdxStore]] = {}
 
-    # ---------- internal helpers: index & lmdb ----------
+    # ---------- internal helpers: index & Arrow FragIdx ----------
 
     def _ensure_index(self):
         if self._index_loaded:
@@ -135,38 +92,25 @@ class EntropyFPLoader(FPLoader):
         self._ensure_index()
         return self._idx_to_split[int(idx)]  # KeyError → fail fast if missing
 
-    def _ensure_fragidx_env_for_split(self, split: str) -> _PIDAwareLMDB:
+    def _ensure_fragidx_store_for_split(self, split: str) -> ArrowFragIdxStore:
         key = f"{split}__FragIdx"
-        env = self._frag_envs.get(key)
-        if env is None:
-            lmdb_path = os.path.join(
-                self.dataset_root, "_lmdb", split, "FragIdx.lmdb")
-            if not os.path.isdir(lmdb_path):
-                raise FileNotFoundError(f"Missing FragIdx shard: {lmdb_path}")
-            env = _PIDAwareLMDB(lmdb_path)
-            self._frag_envs[key] = env
-        return env
+        store = self._frag_stores.get(key)
+        if store is None:
+            arrow_path = os.path.join(
+                self.dataset_root, "arrow", split, "FragIdx.parquet")
+            if not os.path.isfile(arrow_path):
+                raise FileNotFoundError(f"Missing FragIdx shard: {arrow_path}")
+            store = ArrowFragIdxStore(arrow_path)
+            self._frag_stores[key] = store
+        return store
 
     def _load_fragment_indices(self, idx: int) -> np.ndarray:
         """
         Returns np.int32 array of sorted unique FP column indices for this idx.
         """
         split = self._split_for_idx(idx)
-        env = self._ensure_fragidx_env_for_split(split)
-        buf = env.get_bytes(str(idx))
-
-        # Parse raw header "{dtype}|{ndim}|{d0},{d1},...|" + raw bytes (dtype must be int32)
-        mv = memoryview(buf)
-        b = mv.tobytes()
-        first = b.index(b'|')
-        second = b.index(b'|', first + 1)
-        third = b.index(b'|', second + 1)
-        dtype_str = b[:first].decode('ascii')
-        if dtype_str != "int32":
-            raise TypeError(f"FragIdx dtype must be int32, got {dtype_str}")
-        # ndim/shape in header are ignored for safety; reconstruct via frombuffer
-        arr = np.frombuffer(mv[third + 1:], dtype=np.int32)
-        return arr
+        store = self._ensure_fragidx_store_for_split(split)
+        return store.get_indices(idx)
 
     # ---------- input SMILES iterator (unchanged utility) ----------
 
