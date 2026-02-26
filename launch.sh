@@ -25,7 +25,6 @@ Notes:
       ./launch.sh marina -- --experiment_name my-exp
 EOF
 }
-
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$script_dir"
 
@@ -91,14 +90,13 @@ export SMART_RUN_ID="$run_id"
 export CUDA_LAUNCH_BLOCKING="$cuda_launch_blocking"
 export PYTHONUNBUFFERED=1
 
-pvc_root="$(
-  python3 - <<'PY'
-import logging
-logging.disable(logging.CRITICAL)
-from src.modules.core.const import PVC_ROOT
-print(PVC_ROOT)
-PY
-)"
+if [[ -d "/root/gurusmart" ]]; then
+  pvc_root="/root/gurusmart/Moonshot"
+  export LD_LIBRARY_PATH="/code/.pixi/envs/default/lib:${LD_LIBRARY_PATH-}"
+else
+  pvc_root="/data/nas-gpu/wang/atong/SMART-Moonshot"
+  export LD_LIBRARY_PATH="/data/nas-gpu/wang/atong/SMART-Moonshot/.pixi/envs/default/lib:${LD_LIBRARY_PATH-}"
+fi
 
 final_dir="${pvc_root%/}/results/${experiment_name}/${run_id}"
 mkdir -p "$final_dir"
@@ -116,5 +114,5 @@ echo "[launch.sh] PVC_ROOT=$pvc_root"
 echo "[launch.sh] final_dir=$final_dir"
 echo "[launch.sh] log_file=$log_file"
 
-torchrun --nproc_per_node="$nproc_per_node" --module src.main "$arch" "${forward_args[@]}"
+pixi run torchrun --nproc_per_node="$nproc_per_node" --module src.main "$arch" "${forward_args[@]}"
 

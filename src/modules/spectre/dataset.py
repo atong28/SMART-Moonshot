@@ -191,32 +191,41 @@ class SPECTREDataModule(pl.LightningDataModule):
             collate_fn=self._collate_fn,
             num_workers=self.num_workers,
             pin_memory=True,
-            persistent_workers=self.persistent_workers
+            persistent_workers=self.persistent_workers,
+            multiprocessing_context="fork",
         )
 
     def val_dataloader(self):
         if not self._fit_is_setup:
             self.setup(stage='fit')
-        return [DataLoader(
-            val_dl,
-            batch_size=self.batch_size,
-            collate_fn=self._collate_fn,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=self.persistent_workers
-        ) for val_dl in self.val]
+        return [
+            DataLoader(
+                val_dl,
+                batch_size=self.batch_size,
+                collate_fn=self._collate_fn,
+                num_workers=self.num_workers,
+                pin_memory=True,
+                persistent_workers=self.persistent_workers,
+                multiprocessing_context="fork",
+            )
+            for val_dl in self.val
+        ]
 
     def test_dataloader(self):
         if not self._test_is_setup:
             self.setup(stage='test')
-        return [DataLoader(
-            test_dl,
-            batch_size=self.batch_size,
-            collate_fn=self._collate_fn,
-            num_workers=self.num_workers,
-            pin_memory=True,
-            persistent_workers=self.persistent_workers
-        ) for test_dl in self.test]
+        return [
+            DataLoader(
+                test_dl,
+                batch_size=self.batch_size,
+                collate_fn=self._collate_fn,
+                num_workers=self.num_workers,
+                pin_memory=True,
+                persistent_workers=self.persistent_workers,
+                multiprocessing_context="fork",
+            )
+            for test_dl in self.test
+        ]
 
     def _collate_fn(self, batch):
         items = tuple(zip(*batch))
