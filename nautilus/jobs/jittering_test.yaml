@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: atong-marina-jittering-test-jittering-2-seed-2 
+  name: atong-marina-jittering-test-jittering-0-seed-0 
   labels:
     owner: atong
 spec:
@@ -26,9 +26,7 @@ spec:
                   - key: kubernetes.io/hostname
                     operator: NotIn
                     values:
-                    - hcc-nrp-shor-c5805.unl.edu
-                    - gpu-09.nrp.mghpcc.org
-                    - hcc-nrp-shor-c6017.unl.edu
+                    - gpu-13.nrp.mghpcc.org
       containers:
         - name: demo
           image: gitlab-registry.nrp-nautilus.io/a8tong/smart-moonshot/pixi-cuda:12.8.1
@@ -39,7 +37,7 @@ spec:
               set -euxo pipefail &&
               bash /root/gurusmart/startup.sh MARINABase1.zip &&
               cd /code &&
-              pixi run train.marina -- --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 2 --experiment_name marina-jittering-test-jittering-2-seed-2 --jittering 2 
+              python launch.py marina --nproc_per_node 1 -- --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-jittering-test-jittering-0-seed-0 --jittering 0 
           volumeMounts:
             - mountPath: "/root/gurusmart"
               name: atong-spectre
@@ -53,15 +51,15 @@ spec:
               name: code-workdir
           resources:
             limits:
-              memory: 100Gi
-              cpu: "18"
+              memory: 40Gi
+              cpu: "5"
               ephemeral-storage: 600Gi
-              nvidia.com/gpu: "4"
+              nvidia.com/gpu: "1"
             requests:
-              memory: 100Gi
-              cpu: "18"
+              memory: 40Gi
+              cpu: "5"
               ephemeral-storage: 600Gi
-              nvidia.com/gpu: "4"
+              nvidia.com/gpu: "1"
 
       volumes:
         - name: atong-spectre

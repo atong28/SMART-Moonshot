@@ -3,11 +3,10 @@ import torch
 import pytorch_lightning as pl
 import torch.nn as nn
 from torchmetrics import MeanMetric
-import numpy as np
 
 from .args import MARINAArgs
 
-from ..core.const import NON_SPECTRAL_INPUTS, SELF_ATTN_INPUTS
+from ..core.const import SELF_ATTN_INPUTS
 from ..core.metrics import cm
 from ..core.ranker import RankingSet
 

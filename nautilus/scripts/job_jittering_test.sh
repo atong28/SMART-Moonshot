@@ -3,15 +3,15 @@ ROOT_DIR=/data/nas-gpu/wang/atong/SMART-Moonshot/nautilus
 experiment="marina-jittering-test"
 input_types="{hsqc,c_nmr,h_nmr,mw,mass_spec}"
 
-for jittering in 0 0.5 1 1.5 2; do
-  for seed in 0 1 2; do
+for jittering in 0; do
+  for seed in 0; do
     jittering_safe=$(echo ${jittering} | sed 's/\./-/g')
     experiment_name="${experiment}-jittering-${jittering_safe}-seed-${seed}"
     yaml="${ROOT_DIR}/jobs/jittering_test.yaml"
 
     # Update YAML
     sed -i "4s/.*/  name: atong-${experiment_name} /" "$yaml"
-    sed -i "42s/.*/              pixi run train.marina -- --input_types ${input_types} --seed ${seed} --experiment_name ${experiment_name} --jittering ${jittering} /" "$yaml"
+    sed -i "40s/.*/              pixi run train.marina -- --input_types ${input_types} --seed ${seed} --experiment_name ${experiment_name} --jittering ${jittering} /" "$yaml"
 
     job_name="atong-${experiment_name}"
 

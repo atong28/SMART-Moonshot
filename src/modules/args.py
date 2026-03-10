@@ -7,21 +7,24 @@ import tyro
 from .core.const import DO_NOT_OVERRIDE
 from .marina import MARINAArgs
 from .spectre import SPECTREArgs
+from .diffms import DiffMSArgs
 
 ArchArgs = Union[
     Annotated[MARINAArgs, tyro.conf.subcommand("marina")],
     Annotated[SPECTREArgs, tyro.conf.subcommand("spectre")],
+    Annotated[DiffMSArgs, tyro.conf.subcommand("diffms")],
 ]
 
 
 def parse_args() -> ArchArgs:
     """
     Parse command-line arguments using tyro.
-    Supports subcommands: 'marina' or 'spectre'
+    Supports subcommands: 'marina', 'spectre', or 'diffms'
     
     Usage:
         python main.py marina --batch_size 64 --lr 1e-4
         python main.py spectre --batch_size 32
+        python main.py diffms --batch_size 32
     """
     args: ArchArgs = tyro.cli(
         ArchArgs,

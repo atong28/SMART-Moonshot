@@ -60,7 +60,7 @@ def load_model(args: MARINAArgs | SPECTREArgs, model: MARINA | SPECTRE) -> None:
 def filter_data(data: dict[int, Any], restrictions: List[INPUT_TYPES]) -> dict[int, Any]:
     return {k: v for k, v in data.items() if k in restrictions}
 
-def benchmark(
+def benchmark_marina(
     args: MARINAArgs | SPECTREArgs,
     data_module: MARINADataModule | SPECTREDataModule,
     model: MARINA | SPECTRE,

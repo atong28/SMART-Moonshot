@@ -6,20 +6,24 @@ spec:
   restartPolicy: Never
   containers:
     - name: shell
-      image: busybox:1.36
-      command: ["sh", "-c", "sleep infinity"]
+      image: ubuntu:22.04
+      command: ["/bin/bash", "-c", "apt-get update && apt-get install -y python3 nano unzip && tail -f /dev/null"]
       resources:
         requests:
           cpu: "100m"
           memory: "1Gi"
+          ephemeral-storage: 600Gi
         limits:
           cpu: "100m"
           memory: "1Gi"
+          ephemeral-storage: 600Gi
       volumeMounts:
         - name: atong-spectre
           mountPath: /root/gurusmart
         - name: smart-datasets
           mountPath: /root/datasets
+        - name: workspace
+          mountPath: /workspace
   volumes:
     - name: atong-spectre
       persistentVolumeClaim:
@@ -27,3 +31,5 @@ spec:
     - name: smart-datasets
       persistentVolumeClaim:
         claimName: smart-datasets
+    - name: workspace
+      emptyDir: {}

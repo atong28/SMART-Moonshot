@@ -8,11 +8,11 @@ import pytorch_lightning as pl
 
 from .marina import MARINA, MARINAArgs, MARINADataModule
 from .spectre import SPECTRE, SPECTREArgs
-from .benchmark import benchmark
+from .diffms import DiffMS, DiffMSArgs, DiffMSDataModule
+from .benchmark import benchmark_marina
 from .data.fp_loader import EntropyFPLoader
 
-
-def test(
+def test_marina(
     args: MARINAArgs | SPECTREArgs,
     data_module: MARINADataModule,
     model: MARINA | SPECTRE,
@@ -95,4 +95,44 @@ def test(
         pickle.dump(test_result, f)
         
     if args.benchmark:
-        benchmark(args, data_module, model, fp_loader, wandb_run=wandb_run)
+        benchmark_marina(args, data_module, model, fp_loader, wandb_run=wandb_run)
+
+def test_diffms(
+    args: DiffMSArgs,
+    data_module: DiffMSDataModule,
+    model: DiffMS,
+    results_path: str,
+    ckpt_path: str | None = None,
+    wandb_run=None
+) -> dict:
+    if not os.path.exists(results_path):
+        os.makedirs(results_path, exist_ok=True)
+    wandb_logger = WandbLogger(experiment=wandb_run)
+    metric = 'val/NLL'
+    ckpt_callback = cb.ModelCheckpoint(
+        monitor=metric,
+        mode='min',
+        save_last=False,
+        save_top_k=1,
+        dirpath=results_path,
+        filename='epoch_{epoch:d}'
+    )
+    early_stopping = EarlyStopping(
+        monitor=metric,
+        mode='min',
+        patience=args.patience
+    )
+    lr_monitor = cb.LearningRateMonitor(logging_interval="step")
+    trainer = pl.Trainer(
+        max_epochs=args.epochs,
+        accelerator="auto",
+        devices=1,
+        logger=wandb_logger,
+        callbacks=[early_stopping, lr_monitor, ckpt_callback],
+        accumulate_grad_batches=args.accumulate_grad_batches_num,
+        strategy='auto'
+    )
+    test_result = trainer.test(model, data_module, ckpt_path=ckpt_path)
+
+    with open(os.path.join(results_path, 'test_result.pkl'), "wb") as f:
+        pickle.dump(test_result, f)

@@ -46,6 +46,25 @@ def configure_system():
         message=r"Sparse CSR tensor support is in beta state\..*",
         category=UserWarning,
     )
+    warnings.filterwarnings(
+        "ignore",
+        message=(
+            r"The number of training batches \(\d+\) is smaller than the logging interval "
+            r"Trainer\(log_every_n_steps=\d+\)\. Set a lower value for log_every_n_steps if you "
+            r"want to see logs for the training epoch\."
+        ),
+        category=UserWarning,
+        module="pytorch_lightning.loops.fit_loop",
+    )
+    warnings.filterwarnings(
+        "ignore",
+        message=(
+            r"functools\.partial will be a method descriptor in future Python versions; "
+            r"wrap it in enum\.member\(\) if you want to preserve the old behavior"
+        ),
+        category=FutureWarning,
+        module="torch.distributed.algorithms.ddp_comm_hooks",
+    )
 
     os.environ["TORCH_CPP_LOG_LEVEL"] = "ERROR"
 

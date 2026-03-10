@@ -1,15 +1,17 @@
 # inputs.py
 import os
-from typing import Iterable, Dict, Optional
-
+from typing import Iterable, Dict, Optional, Any
 import numpy as np
+import pickle
 import torch
 import torch.nn.functional as F
 
-from ..core.const import INPUT_TYPES
+from ..core.const import INPUT_TYPES, ATOM_TYPES, BOND_TYPES
 from .fp_loader import FPLoader
 from .arrow_store import ArrowTensorStore
-
+from torch_geometric.data import Data
+from rdkit import Chem
+from rdkit.Chem import rdFingerprintGenerator
 
 class SpectralInputLoader:
     '''
@@ -155,3 +157,101 @@ class MFInputLoader:
 
     def load(self, idx: int) -> torch.Tensor:
         return self.fp_loader.build_mfp(idx)
+
+class GraphInputLoader:
+    def __init__(
+        self,
+        data_dict: dict[int, Any],
+        root: Optional[str] = None,
+        split: Optional[str] = None,
+        use_arrow: Optional[bool] = None,
+    ):
+        """
+        If use_arrow is:
+          - True:  load from Arrow shards (requires root & split)
+          - False: compute on-the-fly from SMILES
+          - None:  auto-detect Arrow shards under <root>/arrow/<split>/ and use
+                   them if present, otherwise fall back to SMILES.
+        """
+        self.data_dict = data_dict
+        self.root = root
+        self.split = split
+        self._use_arrow = False
+        self._arrow_x: Optional[ArrowTensorStore] = None
+        self._arrow_edge_index: Optional[ArrowTensorStore] = None
+        self._arrow_edge_attr: Optional[ArrowTensorStore] = None
+
+        if use_arrow is True:
+            if self.root is None or self.split is None:
+                raise ValueError("GraphInputLoader(use_arrow=True) requires root and split.")
+            if not self._init_arrow_stores():
+                raise FileNotFoundError(
+                    f"Graph Arrow shards not found under {os.path.join(self.root, 'arrow', self.split)}"
+                )
+            self._use_arrow = True
+        elif use_arrow is None and self.root is not None and self.split is not None:
+            if self._init_arrow_stores():
+                self._use_arrow = True
+
+    def _init_arrow_stores(self) -> bool:
+        arrow_base = os.path.join(self.root, "arrow")
+        arrow_split_dir = os.path.join(arrow_base, self.split)
+        x_path = os.path.join(arrow_split_dir, "GraphX.parquet")
+        ei_path = os.path.join(arrow_split_dir, "GraphEdgeIndex.parquet")
+        ea_path = os.path.join(arrow_split_dir, "GraphEdgeAttr.parquet")
+        if not (os.path.isfile(x_path) and os.path.isfile(ei_path) and os.path.isfile(ea_path)):
+            return False
+        self._arrow_x = ArrowTensorStore(x_path)
+        self._arrow_edge_index = ArrowTensorStore(ei_path)
+        self._arrow_edge_attr = ArrowTensorStore(ea_path)
+        return True
+
+    def _load_from_smiles(self, idx: int) -> Data:
+        smiles = self.data_dict[idx]['smiles']
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None:
+            raise ValueError(f"Invalid SMILES: {smiles}")
+        N = mol.GetNumAtoms()
+        nodes = [ATOM_TYPES[atom.GetSymbol()] for atom in mol.GetAtoms()]
+        row, col, edge_type = [], [], []
+        for bond in mol.GetBonds():
+            start, end = bond.GetBeginAtomIdx(), bond.GetEndAtomIdx()
+            row += [start, end]
+            col += [end, start]
+            edge_type += 2 * [BOND_TYPES[bond.GetBondType()] + 1]
+        edge_index = torch.tensor([row, col], dtype=torch.long)
+        edge_type = torch.tensor(edge_type, dtype=torch.long)
+        edge_attr = F.one_hot(edge_type, num_classes=len(BOND_TYPES) + 1).to(torch.float)
+        perm = (edge_index[0] * N + edge_index[1]).argsort()
+        edge_index = edge_index[:, perm]
+        edge_attr = edge_attr[perm]
+        x = F.one_hot(torch.tensor(nodes), num_classes=len(ATOM_TYPES)).float()
+        return x, edge_index, edge_attr, smiles
+
+    def _load_from_arrow(self, idx: int) -> Data:
+        if self._arrow_x is None or self._arrow_edge_index is None or self._arrow_edge_attr is None:
+            raise RuntimeError("Arrow stores not initialized for GraphInputLoader.")
+        x = self._arrow_x.get_tensor(idx)
+        edge_index = self._arrow_edge_index.get_tensor(idx).to(dtype=torch.long)
+        edge_attr = self._arrow_edge_attr.get_tensor(idx)
+        smiles = self.data_dict[idx]['smiles']
+        return x, edge_index, edge_attr, smiles
+
+    def load(self, idx: int) -> Data:
+        if self._use_arrow:
+            return self._load_from_arrow(idx)
+        return self._load_from_smiles(idx)
+
+gen = rdFingerprintGenerator.GetMorganGenerator(radius=2, fpSize=2048)
+
+class RDKitMFInputLoader:
+    def __init__(self, data_dict: dict[int, Any]):
+        self.data_dict = data_dict
+
+    def load(self, idx: int) -> torch.Tensor:
+        smiles = self.data_dict[idx]['smiles']
+        mol = Chem.MolFromSmiles(smiles)
+        if mol is None: raise ValueError(f"Invalid SMILES: {smiles}")
+        fp = gen.GetFingerprint(mol)
+        y = torch.tensor(np.asarray(fp, dtype=np.int8)).unsqueeze(0)
+        return y
