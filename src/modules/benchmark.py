@@ -19,10 +19,15 @@ from .log import get_logger
 from .core.const import BENCHMARK_ROOT, DATASET_ROOT, INPUT_TYPES
 from .data.fp_loader import EntropyFPLoader
 
+logger = get_logger(__file__)
 
 _gen = GetMorganGenerator(radius=2, fpSize=2048)
 
 def cos_sim(pred, target):
+    if torch.norm(pred) == 0:
+        logger.warning(f'[Cosine Similarity] Pred is all zeros')
+    if torch.norm(target) == 0:
+        logger.warning(f'[Cosine Similarity] Target is all zeros')
     return torch.dot(pred, target) / (torch.norm(pred) * torch.norm(target))
 
 def tanimoto_sim(pred, target):
@@ -76,7 +81,7 @@ def benchmark_marina(
         load_model(args, model)
     if BENCHMARK_ROOT is None:
         raise ValueError('Benchmarking is not supported on this setup')
-    logger = get_logger(__file__)
+    
     logger.info(f'[Benchmark] Benchmarking model {model.__class__.__name__}')
     metadata = json.load(open(os.path.join(DATASET_ROOT, "metadata.json"), 'r'))
     meta_smi_to_idx = {entry['canonical_2d_smiles']: int(idx) for idx, entry in metadata.items()}
