@@ -127,7 +127,7 @@ def benchmark_marina(
     logger.info(f'[Benchmark] Average dereplication top10: {sum(dereplication_topk[10])} out of {len(dereplication_topk[10])} available ({sum(dereplication_topk[10]) / len(dereplication_topk[10]) * 100:.2f}%)')
 
     if wandb_run is not None:
-        mean_cos = torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).item()
+        mean_cos = torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).detach().item()
         n1, n5, n10 = len(dereplication_topk[1]), len(dereplication_topk[5]), len(dereplication_topk[10])
         wandb.log({
             "benchmark/mean_cos": mean_cos,

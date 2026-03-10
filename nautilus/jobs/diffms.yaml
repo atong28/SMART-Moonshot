@@ -35,9 +35,9 @@ spec:
             - "-c"
             - >-
               set -euxo pipefail &&
-              bash /root/gurusmart/startup.sh MARINABase1.zip &&
+              bash /root/gurusmart/startup.sh DiffMSDataset.zip &&
               cd /code &&
-              pixi run python launch.py marina --nproc_per_node 1 -- --input_types {hsqc,c_nmr,h_nmr,mw,mass_spec} --seed 0 --experiment_name marina-jittering-test-jittering-0-seed-0 --jittering 0 
+              pixi run train.diffms -- --seed 0 --experiment_name diffms-run
           volumeMounts:
             - mountPath: "/root/gurusmart"
               name: atong-spectre
