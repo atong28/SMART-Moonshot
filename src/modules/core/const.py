@@ -31,7 +31,7 @@ if 'src/marina/src/modules' in __file__:
 elif 'nas-gpu' in __file__:
     logger.info('Detected yuzu setup')
     CODE_ROOT = '/data/nas-gpu/wang/atong/SMART-Moonshot'
-    DATASET_ROOT = '/data/nas-gpu/wang/atong/Datasets/DiffMSDataset'
+    DATASET_ROOT = '/data/nas-gpu/wang/atong/Datasets/MARINABase1'
     WANDB_API_KEY_FILE = '/data/nas-gpu/wang/atong/SMART-Moonshot/wandb_api_key.json'
     PVC_ROOT = CODE_ROOT
     BENCHMARK_ROOT = '/data/nas-gpu/wang/atong/Datasets/Benchmark'
@@ -47,7 +47,7 @@ else:
 
 DO_NOT_OVERRIDE = [
     'train', 'test', 'visualize', 'load_from_checkpoint', 'input_types', 'requires',
-    'benchmark', 'restrictions'
+    'benchmark', 'restrictions', 'benchmark_split'
 ]
 
 HSQC_TYPE = 0
