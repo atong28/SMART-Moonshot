@@ -85,7 +85,8 @@ def benchmark_marina(
         benchmark_data = {k: v for k, v in benchmark_data.items() if v['split'] == args.benchmark_split}
     for idx, entry in tqdm(benchmark_data.items(), desc='Benchmarking'):
         inputs = data_module.format_inference_data(filter_data(entry['input'], restrictions))
-        output = model(**inputs)
+        with torch.no_grad():
+            output = model(**inputs)
         pred = torch.sigmoid(output[0])
         idxs = model.ranker.retrieve_idx(pred, 10).tolist()
         sfp = fp_loader.build_mfp_for_smiles(entry['smiles'])
@@ -120,7 +121,7 @@ def benchmark_marina(
         }
     pickle.dump(benchmark_data, open(os.path.join(BENCHMARK_ROOT, 'benchmarks', f"{args.experiment_name}_benchmark_results.pkl"), 'wb'))
     logger.info(f'[Benchmark] Benchmarking completed')
-    logger.info(f'[Benchmark] Average cosine similarity: {torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).item()}')
+    logger.info(f'[Benchmark] Average cosine similarity: {torch.mean(torch.tensor([entry["predictions"]["cosine_sim"] for entry in benchmark_data.values()])).detach().item()}')
     dereplication_topk = {k: [entry["predictions"]["dereplication_topk"][k] for entry in benchmark_data.values() if entry["predictions"]["dereplication_topk"][k] is not None] for k in range(1, 11)}
     logger.info(f'[Benchmark] Average dereplication top1: {sum(dereplication_topk[1])} out of {len(dereplication_topk[1])} available ({sum(dereplication_topk[1]) / len(dereplication_topk[1]) * 100:.2f}%)')
     logger.info(f'[Benchmark] Average dereplication top5: {sum(dereplication_topk[5])} out of {len(dereplication_topk[5])} available ({sum(dereplication_topk[5]) / len(dereplication_topk[5]) * 100:.2f}%)')
