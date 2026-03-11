@@ -28,6 +28,7 @@ class DiffMSArgs(SMARTArgs):
     lr: float = 0.0015
     weight_decay: float = 1e-12
     pct_start: float = 0.3
+    epochs: int = 75
     
     denoise_nodes: bool = False # TODO: remove?
     diffusion_noise_schedule: str = 'cosine'

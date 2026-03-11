@@ -20,6 +20,45 @@ from ..log import get_logger
 
 logger = get_logger(__file__)
 
+def collate(batch):
+    dicts, fps = zip(*batch)
+    batch_inputs = {}
+    for mod in INPUTS_CANONICAL_ORDER:
+        seqs = [d.get(mod) for d in dicts]
+        if all(x is None for x in seqs):
+            continue
+        D = next(x.shape[1] for x in seqs if isinstance(
+            x, torch.Tensor) and x.ndim == 2)
+        seqs = [
+            x if (isinstance(x, torch.Tensor) and x.ndim ==
+                    2) else torch.zeros((0, D), dtype=torch.float)
+            for x in seqs
+        ]
+        batch_inputs[mod] = pad_sequence(seqs, batch_first=True)
+
+    batch_fps = torch.stack(fps, dim=0)
+    return batch_inputs, batch_fps
+
+def format_inference_data(data: dict[int, Any]) -> dict[str, Any]:
+    '''
+    Return collated data for inference.
+    
+    data: stores same thing as input_loader would give:
+    {
+        'hsqc': ..., # shape: (N, 3)
+        'c_nmr': ..., # shape: (N, 1)
+        'h_nmr': ..., # shape: (N, 1)
+        'mw': ... # shape: (1,)
+    }
+    
+    Usage: 
+    >>> inputs = data_module.format_inference_data(data)
+    >>> output = model(**inputs)
+    '''
+    if 'mw' in data:
+        data['mw'] = torch.tensor(data['mw']).view(1, 1)
+    batch_inputs, _ = collate([(data, torch.tensor([0.0]))])
+    return {'batch': batch_inputs}
 
 class MARINADataset(Dataset):
     def __init__(self, args: MARINAArgs, fp_loader: FPLoader, split: str = 'train', override_input_types: Optional[list[str]] = None):
@@ -244,23 +283,7 @@ class MARINADataModule(pl.LightningDataModule):
         batch: list of (data_inputs: dict, mfp: Tensor)
         returns: (batch_inputs: dict[str→Tensor], batch_fps: Tensor)
         """
-        dicts, fps = zip(*batch)
-        batch_inputs = {}
-        for mod in INPUTS_CANONICAL_ORDER:
-            seqs = [d.get(mod) for d in dicts]
-            if all(x is None for x in seqs):
-                continue
-            D = next(x.shape[1] for x in seqs if isinstance(
-                x, torch.Tensor) and x.ndim == 2)
-            seqs = [
-                x if (isinstance(x, torch.Tensor) and x.ndim ==
-                      2) else torch.zeros((0, D), dtype=torch.float)
-                for x in seqs
-            ]
-            batch_inputs[mod] = pad_sequence(seqs, batch_first=True)
-
-        batch_fps = torch.stack(fps, dim=0)
-        return batch_inputs, batch_fps
+        return collate(batch)
 
     def format_inference_data(self, data: dict[int, Any]) -> dict[str, Any]:
         '''

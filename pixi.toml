@@ -8,11 +8,11 @@ version = "0.1.0"
 [tasks]
 "train.marina" = { cmd = "python launch.py marina --nproc_per_node 4", env = { CUDA_LAUNCH_BLOCKING = "1" } }
 "train.spectre" = { cmd = "python launch.py spectre --nproc_per_node 4", env = { CUDA_LAUNCH_BLOCKING = "1" } }
-"train.diffms" = { cmd = "python launch.py diffms --nproc_per_node 1", env = { CUDA_LAUNCH_BLOCKING = "1" } }
+"train.diffms" = { cmd = "python launch.py diffms --nproc_per_node 4", env = { CUDA_LAUNCH_BLOCKING = "1" } }
 "debug.marina" = { cmd = "python launch.py marina --nproc_per_node 2" }
 "debug.spectre" = { cmd = "python launch.py spectre --nproc_per_node 2" }
 "debug.diffms" = { cmd = "python launch.py diffms --nproc_per_node 2" }
-"benchmark.marina" = { cmd = "python -m src.main marina --no_train --no_test --benchmark --load_from_checkpoint checkpoints/marina_best/best.ckpt" }
+"benchmark.marina" = { cmd = "python -m src.main marina --no_train --no_test --benchmark --load_from_checkpoint checkpoints/marina_best_jit0.5/best_jit0-5.ckpt" }
 "benchmark.spectre" = { cmd = "python -m src.main spectre --no_train --no_test --benchmark --load_from_checkpoint checkpoints/spectre_best/best.ckpt" }
 "deploy" = { cmd = "bash nautilus/scripts/deploy.sh" }
 

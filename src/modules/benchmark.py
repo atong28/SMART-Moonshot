@@ -24,10 +24,6 @@ logger = get_logger(__file__)
 _gen = GetMorganGenerator(radius=2, fpSize=2048)
 
 def cos_sim(pred, target):
-    if torch.norm(pred) == 0:
-        logger.warning(f'[Cosine Similarity] Pred is all zeros')
-    if torch.norm(target) == 0:
-        logger.warning(f'[Cosine Similarity] Target is all zeros')
     return torch.dot(pred, target) / (torch.norm(pred) * torch.norm(target))
 
 def tanimoto_sim(pred, target):

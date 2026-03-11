@@ -7,9 +7,11 @@ import math
 import pickle
 import multiprocessing as mp
 from collections import Counter, defaultdict
-from typing import Dict, Iterable, List, Optional, Set, Tuple, Any, Union
+from typing import Dict, Iterable, List, Optional, Set, Tuple, Any
 
 import numpy as np
+import pyarrow as pa
+import pyarrow.parquet as pq
 import torch
 from rdkit import Chem
 from rdkit.Chem import rdFingerprintGenerator
@@ -23,6 +25,16 @@ BitInfo = Tuple[int, str, str, int]  # (bit_id, atom_symbol, fragment_smiles, ra
 
 G_RADIUS = None
 G_MAPPING = None  # for CSR bitinfo_to_col
+
+def canonicalize_smiles(smiles: str, keep_stereo: bool = False):
+    if smiles is None or smiles == '':
+        raise ValueError(f"Invalid empty SMILES")
+    if '.' in smiles:
+        smiles = max(smiles.split('.'), key=len)
+    mol = Chem.MolFromSmiles(smiles)
+    if mol is None:
+        raise ValueError(f"Invalid SMILES: {smiles}")
+    return Chem.MolToSmiles(mol, isomericSmiles=keep_stereo, canonical=True)
 
 def _init_count(radius: int):
     global G_RADIUS
@@ -158,6 +170,7 @@ def count_circular_substructures(
     """
     Return presence map BitInfo -> 1 for a SMILES at given radius.
     """
+    smiles = canonicalize_smiles(smiles)
     bit_info_counter: Dict[BitInfo, int] = defaultdict(int)
     atom_to_bit_infos, all_bit_infos = get_bitinfos(smiles, radius, ignore_atoms or ())
     if atom_to_bit_infos is None:
@@ -187,38 +200,8 @@ def compute_entropy(counts: np.ndarray, total_dataset_size: int) -> np.ndarray:
 
 
 # ---------------------------
-# Training fragments & retrieval counting
+# Retrieval counting
 # ---------------------------
-def _save_fragments_for_idx(args) -> None:
-    idx, smiles, out_dir, radius = args
-    frags = list(count_circular_substructures(smiles, radius).keys())
-    torch.save(frags, os.path.join(out_dir, f"{idx}.pt"))
-
-
-def generate_fragments_for_training(
-    index_path: str,
-    out_dir: str,
-    radius: int,
-    num_procs: int = 0,
-) -> None:
-    """
-    Build per-idx fragment lists under out_dir/Fragments/{idx}.pt using index_path (training set).
-    """
-    smiles_map = load_smiles_index(index_path)
-    frag_dir = os.path.join(out_dir, "Fragments")
-    os.makedirs(frag_dir, exist_ok=True)
-
-    items = [(idx, smi, frag_dir, radius) for idx, smi in smiles_map.items()]
-    procs = (mp.cpu_count() if not num_procs else max(1, int(num_procs)))
-    with mp.Pool(processes=procs) as pool:
-        for _ in tqdm(
-            pool.imap_unordered(_save_fragments_for_idx, items),
-            total=len(items),
-            desc="Saving training fragments",
-        ):
-            pass
-
-
 def count_fragments_over_retrieval(
     retrieval_path: str,
     radius: int,
@@ -324,4 +307,64 @@ def build_rankingset_csr(
     vals = torch.tensor(values, dtype=torch.float32)
     return torch.sparse_csr_tensor(crow, cols, vals, size=(num_rows, num_cols))
 
+
+# ---------------------------
+# FragIdx parquet builder
+# ---------------------------
+def build_fragidx_parquets(
+    index_path: str,
+    out_dir: str,
+    bitinfo_to_col: Dict[BitInfo, int],
+    radius: int,
+    num_procs: int = 0,
+) -> None:
+    """
+    Build DATASET_ROOT/arrow/<split>/FragIdx.parquet for every split found in index.pkl.
+
+    Schema: (idx: int64, cols: list<int32>) where cols are sorted feature column indices
+    mapped through bitinfo_to_col.
+    """
+    data = _load_as_dict(index_path)
+
+    split_items: Dict[str, List[Tuple[int, str]]] = defaultdict(list)
+    for k, v in data.items():
+        idx = int(k)
+        if isinstance(v, dict):
+            smi = v.get("smiles") or v.get("canonical_2d_smiles")
+            split = v.get("split", "train")
+        elif isinstance(v, str):
+            smi = v
+            split = "train"
+        else:
+            continue
+        if smi:
+            split_items[split].append((idx, smi))
+
+    procs = mp.cpu_count() if not num_procs else max(1, int(num_procs))
+
+    for split, items in split_items.items():
+        results: List[Tuple[int, List[int]]] = []
+        if procs == 1:
+            for item in tqdm(items, desc=f"Building FragIdx [{split}]"):
+                results.append(_worker_row_nonzeros(item))
+        else:
+            with mp.Pool(
+                processes=procs,
+                initializer=_init_csr,
+                initargs=(radius, bitinfo_to_col),
+            ) as pool:
+                for res in tqdm(
+                    pool.imap_unordered(_worker_row_nonzeros, items, chunksize=64),
+                    total=len(items),
+                    desc=f"Building FragIdx [{split}]",
+                ):
+                    results.append(res)
+
+        out_path = os.path.join(out_dir, "arrow", split, "FragIdx.parquet")
+        os.makedirs(os.path.dirname(out_path), exist_ok=True)
+        table = pa.table({
+            "idx": pa.array([r[0] for r in results], type=pa.int64()),
+            "cols": pa.array([r[1] for r in results], type=pa.list_(pa.int32())),
+        })
+        pq.write_table(table, out_path)
 
